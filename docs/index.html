@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Impureim Sandwich</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-sidebar: #0d1117;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --text-link: #58a6ff;
+      --accent: #f78166;
+      --green: #3fb950;
+      --yellow: #d29922;
+      --blue: #58a6ff;
+      --red: #f85149;
+      --code-bg: #1c2128;
+      --sidebar-w: 320px;
+    }
+
+    html { font-size: 16px; scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      padding: 2rem 0;
+      overflow-y: auto;
+      z-index: 100;
+      transition: transform .3s ease;
+    }
+
+    .sidebar-header {
+      padding: 0 1.5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+
+    .sidebar-header h1 span { color: var(--accent); }
+
+    .sidebar-header p {
+      font-size: .78rem;
+      color: var(--text-muted);
+      margin-top: .4rem;
+      line-height: 1.5;
+    }
+
+    .nav { list-style: none; padding: 1rem 0; }
+
+    .nav li a {
+      display: flex;
+      align-items: baseline;
+      gap: .6rem;
+      padding: .55rem 1.5rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: .85rem;
+      font-weight: 500;
+      border-left: 3px solid transparent;
+      transition: all .15s ease;
+    }
+
+    .nav li a:hover { color: var(--text); background: rgba(255,255,255,.04); }
+    .nav li a.active {
+      color: var(--text);
+      border-left-color: var(--accent);
+      background: rgba(255,255,255,.06);
+    }
+
+    .nav li a .badge {
+      font-size: .7rem;
+      padding: .1rem .4rem;
+      border-radius: 4px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .badge-green  { background: rgba(63,185,80,.15);  color: var(--green); }
+    .badge-yellow { background: rgba(210,153,34,.15);  color: var(--yellow); }
+    .badge-blue   { background: rgba(88,166,255,.15);  color: var(--blue); }
+    .badge-red    { background: rgba(248,81,73,.15);   color: var(--red); }
+
+    /* Main content */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .content {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 3rem 2.5rem 6rem;
+    }
+
+    /* Typography */
+    .content h1 { font-size: 2rem; font-weight: 700; margin: 0 0 1rem; line-height: 1.25; }
+    .content h2 { font-size: 1.4rem; font-weight: 600; margin: 2.5rem 0 1rem; padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+    .content h3 { font-size: 1.15rem; font-weight: 600; margin: 2rem 0 .75rem; }
+    .content h4 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 .5rem; color: var(--text-muted); }
+    .content p { margin: 0 0 1rem; }
+
+    .content a { color: var(--text-link); text-decoration: none; }
+    .content a:hover { text-decoration: underline; }
+
+    .content strong { font-weight: 600; }
+
+    .content blockquote {
+      border-left: 3px solid var(--accent);
+      padding: .75rem 1.25rem;
+      margin: 1rem 0 1.5rem;
+      background: rgba(247,129,102,.06);
+      border-radius: 0 6px 6px 0;
+      color: var(--text);
+    }
+
+    .content blockquote p:last-child { margin-bottom: 0; }
+
+    .content ul, .content ol { margin: 0 0 1rem; padding-left: 1.5rem; }
+    .content li { margin-bottom: .35rem; }
+    .content li > ul, .content li > ol { margin-top: .35rem; margin-bottom: 0; }
+
+    .content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .88em;
+      background: var(--code-bg);
+      padding: .15em .4em;
+      border-radius: 4px;
+    }
+
+    .content pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin: 1rem 0 1.5rem;
+      overflow-x: auto;
+    }
+
+    .content pre code {
+      background: none;
+      padding: 0;
+      font-size: .85rem;
+      line-height: 1.6;
+    }
+
+    .content hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+
+    /* Tables */
+    .content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      font-size: .9rem;
+    }
+
+    .content th, .content td {
+      padding: .6rem .8rem;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .content th {
+      background: var(--code-bg);
+      font-weight: 600;
+    }
+
+    .content tr:hover { background: rgba(255,255,255,.02); }
+
+    /* Back to top */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      margin-bottom: 1.5rem;
+      font-size: .85rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .back-link:hover { color: var(--text-link); }
+
+    /* Mobile */
+    .menu-toggle {
+      display: none;
+      position: fixed;
+      top: 1rem; left: 1rem;
+      z-index: 200;
+      width: 40px; height: 40px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1.2rem;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 50;
+    }
+
+    @media (max-width: 860px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; }
+      .content { padding: 4rem 1.25rem 4rem; }
+      .menu-toggle { display: flex; }
+      .overlay.show { display: block; }
+    }
+  </style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+<div class="overlay" onclick="toggleSidebar()"></div>
+
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>🥪 <span>Impureim</span> Sandwich</h1>
+    <p>Саммарі статей Mark Seemann про функціональну архітектуру</p>
+  </div>
+  <ul class="nav">
+    <li><a href="#home" data-page="README.md" class="active">Огляд</a></li>
+    <li>
+      <a href="#01" data-page="01-functional-architecture.md">
+        Functional Architecture
+        <span class="badge badge-green">основа</span>
+      </a>
+    </li>
+    <li>
+      <a href="#02" data-page="02-impureim-sandwich.md">
+        Impureim Sandwich
+        <span class="badge badge-green">основа</span>
+      </a>
+    </li>
+    <li>
+      <a href="#03" data-page="03-decoupling-decisions-from-effects.md">
+        Decoupling Decisions
+        <span class="badge badge-yellow">практика</span>
+      </a>
+    </li>
+    <li>
+      <a href="#04" data-page="04-whats-a-sandwich.md">
+        What's a Sandwich?
+        <span class="badge badge-yellow">еволюція</span>
+      </a>
+    </li>
+    <li>
+      <a href="#05" data-page="05-recawr-sandwich.md">
+        Recawr Sandwich
+        <span class="badge badge-yellow">спеціалізація</span>
+      </a>
+    </li>
+    <li>
+      <a href="#06" data-page="06-from-di-to-dependency-rejection.md">
+        DI → Dependency Rejection
+        <span class="badge badge-blue">контекст</span>
+      </a>
+    </li>
+    <li>
+      <a href="#07" data-page="07-ports-and-adapters.md">
+        Ports and Adapters
+        <span class="badge badge-blue">контекст</span>
+      </a>
+    </li>
+    <li>
+      <a href="#08" data-page="08-discerning-purity.md">
+        Discerning Purity
+        <span class="badge badge-red">просунуте</span>
+      </a>
+    </li>
+    <li>
+      <a href="#09" data-page="09-asynchronous-injection.md">
+        Asynchronous Injection
+        <span class="badge badge-red">просунуте</span>
+      </a>
+    </li>
+  </ul>
+</aside>
+
+<main class="main">
+  <div class="content" id="content">
+    <p style="color: var(--text-muted)">Завантаження…</p>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/kotlin.min.js"></script>
+<script>
+  marked.setOptions({
+    highlight: (code, lang) => {
+      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+      return hljs.highlightAuto(code).value;
+    },
+    gfm: true,
+    breaks: false
+  });
+
+  const content = document.getElementById('content');
+  const links = document.querySelectorAll('.nav a');
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.querySelector('.overlay');
+  const cache = {};
+
+  async function loadPage(file) {
+    if (cache[file]) return cache[file];
+    const res = await fetch(file);
+    if (!res.ok) throw new Error(`${res.status}`);
+    const md = await res.text();
+    cache[file] = md;
+    return md;
+  }
+
+  function renderPage(md, isHome) {
+    let html = marked.parse(md);
+    // On non-home pages strip internal .md links (they navigate via sidebar)
+    if (!isHome) {
+      content.innerHTML = `<a class="back-link" href="#home" data-page="README.md">← Назад до огляду</a>` + html;
+    } else {
+      // Rewrite .md links in home page to use hash navigation
+      html = html.replace(/href="(\d{2}-[^"]+\.md)"/g, (_, file) => {
+        const num = file.slice(0, 2);
+        return `href="#${num}" data-page="${file}"`;
+      });
+      content.innerHTML = html;
+    }
+    // Handle clicks on inline links
+    content.querySelectorAll('a[data-page]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        navigate(a.dataset.page, a.getAttribute('href').slice(1));
+      });
+    });
+    window.scrollTo({ top: 0 });
+  }
+
+  async function navigate(file, hash) {
+    // Update active state
+    links.forEach(l => l.classList.toggle('active', l.dataset.page === file));
+    try {
+      const md = await loadPage(file);
+      renderPage(md, file === 'README.md');
+      history.pushState(null, '', `#${hash}`);
+    } catch {
+      content.innerHTML = `<p style="color:var(--red)">Помилка завантаження ${file}</p>`;
+    }
+    // Close mobile sidebar
+    sidebar.classList.remove('open');
+    overlay.classList.remove('show');
+  }
+
+  // Sidebar click handlers
+  links.forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      navigate(link.dataset.page, link.getAttribute('href').slice(1));
+    });
+  });
+
+  // Handle browser back/forward
+  window.addEventListener('popstate', () => routeFromHash());
+
+  function routeFromHash() {
+    const hash = location.hash.slice(1) || 'home';
+    const link = document.querySelector(`.nav a[href="#${hash}"]`);
+    if (link) {
+      navigate(link.dataset.page, hash);
+    } else {
+      navigate('README.md', 'home');
+    }
+  }
+
+  function toggleSidebar() {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+  }
+
+  // Initial load
+  routeFromHash();
+</script>
+</body>
+</html>
