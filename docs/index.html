@@ -350,15 +350,14 @@
 
   function renderPage(md, isHome) {
     let html = marked.parse(md);
-    // On non-home pages strip internal .md links (they navigate via sidebar)
+    // Rewrite all internal .md links to SPA hash navigation
+    html = html.replace(/href="(\d{2}-[^"]+\.md)"/g, (_, file) => {
+      const num = file.slice(0, 2);
+      return `href="#${num}" data-page="${file}"`;
+    });
     if (!isHome) {
       content.innerHTML = `<a class="back-link" href="#home" data-page="README.md">← Назад до огляду</a>` + html;
     } else {
-      // Rewrite .md links in home page to use hash navigation
-      html = html.replace(/href="(\d{2}-[^"]+\.md)"/g, (_, file) => {
-        const num = file.slice(0, 2);
-        return `href="#${num}" data-page="${file}"`;
-      });
       content.innerHTML = html;
     }
     // Handle clicks on inline links
