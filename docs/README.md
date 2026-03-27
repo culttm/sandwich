@@ -17,6 +17,8 @@
 | 7 | [07-ports-and-adapters.md](07-ports-and-adapters.md) | Functional architecture is Ports and Adapters | 🔵 Контекст — зв'язок з Hexagonal |
 | 8 | [08-discerning-purity.md](08-discerning-purity.md) | Discerning and maintaining purity | 🔴 Практика — як не зламати чистоту |
 | 9 | [09-asynchronous-injection.md](09-asynchronous-injection.md) | Asynchronous Injection | 🔴 Практика — suspend у сендвічі |
+| 10 | [10-vertical-slice-architecture.md](10-vertical-slice-architecture.md) | Vertical Slice Architecture | 🔵 Контекст — організація коду по фічах |
+| 11 | [11-vertical-slice-pitfalls.md](11-vertical-slice-pitfalls.md) | VSA: Підводні камені | 🔴 Практика — коли VSA ламається |
 
 ## Візуальна модель
 
