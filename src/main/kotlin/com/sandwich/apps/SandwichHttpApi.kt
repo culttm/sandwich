@@ -12,10 +12,11 @@ import com.sandwich.common.infra.seed
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-fun SandwichHttpApi(logger: Logger = LoggerFactory.getLogger("SandwichHttpApi")) = App {
+fun SandwichHttpApi(
+    db: Db = Db().apply { seed() },
+    logger: Logger = LoggerFactory.getLogger("SandwichHttpApi")
+) = App {
     logger.info("Starting SandwichHttpApi")
-
-    val db = Db().apply { seed() }
 
     val server = HttpServer(8080) {
         configureSerialization()
