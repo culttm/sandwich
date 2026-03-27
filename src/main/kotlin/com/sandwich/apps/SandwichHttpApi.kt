@@ -7,17 +7,23 @@ import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.common.http.configureMonitoring
 import com.sandwich.common.http.configureRouting
 import com.sandwich.common.http.configureSerialization
+import com.sandwich.common.infra.MenuStore
+import com.sandwich.common.infra.OrderStore
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 fun SandwichHttpApi(logger: Logger = LoggerFactory.getLogger("SandwichHttpApi")) = App {
     logger.info("Starting SandwichHttpApi")
 
+    // ── Infrastructure (impure) ──
+    val menuStore = MenuStore()
+    val orderStore = OrderStore()
+
     val server = HttpServer(8080) {
         configureSerialization()
         configureErrorHandling()
         configureMonitoring()
-        configureRouting()
+        configureRouting(menuStore, orderStore)
     }
     server.start()
 
@@ -27,4 +33,3 @@ fun SandwichHttpApi(logger: Logger = LoggerFactory.getLogger("SandwichHttpApi"))
         logger.info("Stopped SandwichHttpApi")
     }
 }
-
