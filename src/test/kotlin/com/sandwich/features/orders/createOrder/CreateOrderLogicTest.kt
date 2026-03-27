@@ -9,10 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-/**
- * Тести чистої функції buildOrder.
- * Жодних моків, жодного runTest, жодних корутин.
- */
 class CreateOrderLogicTest {
 
     private val menu = mapOf(
@@ -22,21 +18,21 @@ class CreateOrderLogicTest {
     )
 
     private val extras = mapOf(
-        "extra-cheese" to ExtraItem("extra-cheese", "Сир", 25),
-        "bacon" to ExtraItem("bacon", "Бекон", 35),
-        "jalapenos" to ExtraItem("jalapenos", "Халапеньо", 15),
+        "extra-cheese" to ExtraItem("extra-cheese", "Cheese", 25),
+        "bacon" to ExtraItem("bacon", "Bacon", 35),
+        "jalapenos" to ExtraItem("jalapenos", "Jalapenos", 15),
     )
 
     private val now = Instant.parse("2026-03-26T12:00:00Z")
     private val orderId = "test-order-1"
 
-    // ── Happy path ──
+    // -- Happy path --
 
     @Test
-    fun `один сендвіч — створює DRAFT`() {
+    fun `single sandwich creates DRAFT`() {
         val items = listOf(OrderItemRequest("classic-club"))
 
-        val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
+        val result = buildOrder(orderId, "Taras", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.Created>(result)
         assertEquals(OrderStatus.DRAFT, result.order.status)
@@ -45,16 +41,16 @@ class CreateOrderLogicTest {
         assertEquals(0, result.order.deliveryFee)
         assertNull(result.order.delivery)
         assertNull(result.order.payment)
-        assertEquals("Тарас", result.order.customerName)
+        assertEquals("Taras", result.order.customerName)
     }
 
     @Test
-    fun `сендвіч з extras — ціна складається`() {
+    fun `sandwich with extras sums prices`() {
         val items = listOf(
             OrderItemRequest("blt", listOf("extra-cheese", "bacon"))
         )
 
-        val result = buildOrder(orderId, "Оля", items, menu, extras, now)
+        val result = buildOrder(orderId, "Olya", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.Created>(result)
         assertEquals(170, result.order.total) // BLT(110) + cheese(25) + bacon(35)
@@ -63,14 +59,14 @@ class CreateOrderLogicTest {
     }
 
     @Test
-    fun `3+ сендвічі — знижка 10 відсотків`() {
+    fun `3 or more sandwiches get 10 percent discount`() {
         val items = listOf(
             OrderItemRequest("classic-club"),   // 120
             OrderItemRequest("blt"),             // 110
             OrderItemRequest("veggie-delight"),  //  99
         )
 
-        val result = buildOrder(orderId, "Марія", items, menu, extras, now)
+        val result = buildOrder(orderId, "Maria", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.Created>(result)
         val subtotal = 120 + 110 + 99  // 329
@@ -81,23 +77,23 @@ class CreateOrderLogicTest {
     }
 
     @Test
-    fun `2 сендвічі — без знижки`() {
+    fun `2 sandwiches no discount`() {
         val items = listOf(
             OrderItemRequest("classic-club"),
             OrderItemRequest("blt"),
         )
 
-        val result = buildOrder(orderId, "Ігор", items, menu, extras, now)
+        val result = buildOrder(orderId, "Igor", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.Created>(result)
         assertEquals(0, result.order.discount)
         assertEquals(230, result.order.total)
     }
 
-    // ── Validation errors ──
+    // -- Validation errors --
 
     @Test
-    fun `порожнє ім'я — BlankName`() {
+    fun `blank name returns BlankName`() {
         val items = listOf(OrderItemRequest("classic-club"))
 
         val result = buildOrder(orderId, "  ", items, menu, extras, now)
@@ -106,48 +102,48 @@ class CreateOrderLogicTest {
     }
 
     @Test
-    fun `порожнє замовлення — EmptyOrder`() {
-        val result = buildOrder(orderId, "Тарас", emptyList(), menu, extras, now)
+    fun `empty items returns EmptyOrder`() {
+        val result = buildOrder(orderId, "Taras", emptyList(), menu, extras, now)
 
         assertIs<CreateOrderDecision.EmptyOrder>(result)
     }
 
     @Test
-    fun `більше 10 позицій — TooManyItems`() {
+    fun `more than 10 items returns TooManyItems`() {
         val items = (1..11).map { OrderItemRequest("classic-club") }
 
-        val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
+        val result = buildOrder(orderId, "Taras", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.TooManyItems>(result)
         assertEquals(10, result.max)
     }
 
     @Test
-    fun `невідомий сендвіч — UnknownSandwich`() {
+    fun `unknown sandwich returns UnknownSandwich`() {
         val items = listOf(OrderItemRequest("mega-burger"))
 
-        val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
+        val result = buildOrder(orderId, "Taras", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.UnknownSandwich>(result)
         assertEquals(listOf("mega-burger"), result.ids)
     }
 
     @Test
-    fun `невідомий extra — UnknownExtras`() {
+    fun `unknown extra returns UnknownExtras`() {
         val items = listOf(OrderItemRequest("blt", listOf("truffle-oil")))
 
-        val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
+        val result = buildOrder(orderId, "Taras", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.UnknownExtras>(result)
         assertEquals(listOf("truffle-oil"), result.ids)
     }
 
     @Test
-    fun `більше 5 extras — TooManyExtras`() {
+    fun `more than 5 extras returns TooManyExtras`() {
         val tooMany = listOf("extra-cheese", "bacon", "jalapenos", "extra-cheese", "bacon", "jalapenos")
         val items = listOf(OrderItemRequest("blt", tooMany))
 
-        val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
+        val result = buildOrder(orderId, "Taras", items, menu, extras, now)
 
         assertIs<CreateOrderDecision.TooManyExtras>(result)
         assertEquals("blt", result.sandwichId)

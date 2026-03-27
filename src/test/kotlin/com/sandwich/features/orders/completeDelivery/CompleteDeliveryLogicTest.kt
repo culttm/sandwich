@@ -10,7 +10,7 @@ class CompleteDeliveryLogicTest {
 
     private fun outForDeliveryOrder() = Order(
         id = "order-1",
-        customerName = "Тарас",
+        customerName = "Taras",
         items = emptyList(),
         subtotal = 120,
         discount = 0,
@@ -21,7 +21,7 @@ class CompleteDeliveryLogicTest {
     )
 
     @Test
-    fun `OUT_FOR_DELIVERY — Delivered`() {
+    fun `OUT_FOR_DELIVERY transitions to Delivered`() {
         val result = decideComplete(outForDeliveryOrder())
 
         assertIs<CompleteDeliveryDecision.Delivered>(result)
@@ -29,14 +29,14 @@ class CompleteDeliveryLogicTest {
     }
 
     @Test
-    fun `null — NotFound`() {
+    fun `null returns NotFound`() {
         val result = decideComplete(null)
 
         assertIs<CompleteDeliveryDecision.NotFound>(result)
     }
 
     @Test
-    fun `PREPARING — WrongStatus`() {
+    fun `PREPARING returns WrongStatus`() {
         val order = outForDeliveryOrder().copy(status = OrderStatus.PREPARING)
 
         val result = decideComplete(order)
@@ -46,7 +46,7 @@ class CompleteDeliveryLogicTest {
     }
 
     @Test
-    fun `CANCELLED — WrongStatus`() {
+    fun `CANCELLED returns WrongStatus`() {
         val order = outForDeliveryOrder().copy(status = OrderStatus.CANCELLED)
 
         val result = decideComplete(order)

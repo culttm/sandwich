@@ -14,7 +14,7 @@ class PayOrderLogicTest {
 
     private fun awaitingOrder(vararg sandwichIds: String) = Order(
         id = "order-1",
-        customerName = "Тарас",
+        customerName = "Taras",
         items = sandwichIds.map { id ->
             OrderLine(
                 sandwichId = id,
@@ -29,16 +29,16 @@ class PayOrderLogicTest {
         deliveryFee = 50,
         total = sandwichIds.size * 120 + 50,
         status = OrderStatus.AWAITING_PAYMENT,
-        delivery = DeliveryInfo("вул. Хрещатик 1", "+380991234567", null, 50),
+        delivery = DeliveryInfo("Khreshchatyk 1", "+380991234567", null, 50),
         createdAt = "2026-03-26T11:50:00Z"
     )
 
     private val fullStock = mapOf("classic-club" to 50, "blt" to 35)
 
-    // ── Happy path ──
+    // -- Happy path --
 
     @Test
-    fun `оплата карткою — PREPARING + stock reserved`() {
+    fun `card payment transitions to PREPARING and reserves stock`() {
         val order = awaitingOrder("classic-club", "blt")
 
         val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
@@ -52,7 +52,7 @@ class PayOrderLogicTest {
     }
 
     @Test
-    fun `оплата при доставці — теж працює`() {
+    fun `cash on delivery also works`() {
         val order = awaitingOrder("classic-club")
 
         val result = decidePayment(order, fullStock, PaymentMethod.CASH_ON_DELIVERY, now, txId)
@@ -62,7 +62,7 @@ class PayOrderLogicTest {
     }
 
     @Test
-    fun `два однакові сендвічі — stock reduction = 2`() {
+    fun `two identical sandwiches reduce stock by 2`() {
         val order = awaitingOrder("classic-club", "classic-club")
 
         val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
@@ -71,17 +71,17 @@ class PayOrderLogicTest {
         assertEquals(mapOf("classic-club" to 2), result.stockReductions)
     }
 
-    // ── Error cases ──
+    // -- Error cases --
 
     @Test
-    fun `null order — NotFound`() {
+    fun `null order returns NotFound`() {
         val result = decidePayment(null, fullStock, PaymentMethod.CARD, now, txId)
 
         assertIs<PayOrderDecision.NotFound>(result)
     }
 
     @Test
-    fun `не AWAITING_PAYMENT — WrongStatus`() {
+    fun `non-AWAITING_PAYMENT returns WrongStatus`() {
         val order = awaitingOrder("classic-club").copy(status = OrderStatus.DRAFT)
 
         val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
@@ -91,7 +91,7 @@ class PayOrderLogicTest {
     }
 
     @Test
-    fun `немає в наявності — OutOfStock`() {
+    fun `zero stock returns OutOfStock`() {
         val order = awaitingOrder("classic-club")
         val emptyStock = mapOf("classic-club" to 0)
 
@@ -102,7 +102,7 @@ class PayOrderLogicTest {
     }
 
     @Test
-    fun `недостатньо stock для кількості — OutOfStock`() {
+    fun `insufficient stock for quantity returns OutOfStock`() {
         val order = awaitingOrder("classic-club", "classic-club", "classic-club")
         val lowStock = mapOf("classic-club" to 2)
 

@@ -14,7 +14,7 @@ class CancelOrderLogicTest {
 
     private fun draftOrder(createdAt: String = "2026-03-26T11:50:00Z") = Order(
         id = "order-1",
-        customerName = "Тарас",
+        customerName = "Taras",
         items = emptyList(),
         subtotal = 120,
         discount = 0,
@@ -25,7 +25,7 @@ class CancelOrderLogicTest {
 
     private fun preparingOrder(createdAt: String = "2026-03-26T11:50:00Z") = Order(
         id = "order-1",
-        customerName = "Тарас",
+        customerName = "Taras",
         items = listOf(
             OrderLine("classic-club", "Classic Club", 120, emptyList(), 120),
             OrderLine("blt", "BLT", 110, emptyList(), 110),
@@ -36,14 +36,14 @@ class CancelOrderLogicTest {
         total = 280,
         status = OrderStatus.PREPARING,
         payment = PaymentInfo(PaymentMethod.CARD, "2026-03-26T11:55:00Z", "tx-1"),
-        delivery = DeliveryInfo("вул. Хрещатик 1", "+380991234567", null, 50),
+        delivery = DeliveryInfo("Khreshchatyk 1", "+380991234567", null, 50),
         createdAt = createdAt
     )
 
-    // ── Happy path: DRAFT → cancel без refund ──
+    // -- Happy path: DRAFT cancel without refund --
 
     @Test
-    fun `DRAFT в межах вікна — Cancelled, без refund, без release stock`() {
+    fun `DRAFT within window is Cancelled without refund or stock release`() {
         val result = decideCancellation(draftOrder(), now)
 
         assertIs<CancelDecision.Cancelled>(result)
@@ -52,10 +52,10 @@ class CancelOrderLogicTest {
         assertTrue(result.releaseStock.isEmpty())
     }
 
-    // ── Happy path: AWAITING_PAYMENT → cancel без refund ──
+    // -- Happy path: AWAITING_PAYMENT cancel without refund --
 
     @Test
-    fun `AWAITING_PAYMENT — Cancelled, без refund`() {
+    fun `AWAITING_PAYMENT is Cancelled without refund`() {
         val order = draftOrder().copy(status = OrderStatus.AWAITING_PAYMENT)
 
         val result = decideCancellation(order, now)
@@ -65,10 +65,10 @@ class CancelOrderLogicTest {
         assertTrue(result.releaseStock.isEmpty())
     }
 
-    // ── Happy path: PREPARING → cancel з refund + release stock ──
+    // -- Happy path: PREPARING cancel with refund + stock release --
 
     @Test
-    fun `PREPARING — Cancelled з refund та release stock`() {
+    fun `PREPARING is Cancelled with refund and stock release`() {
         val result = decideCancellation(preparingOrder(), now)
 
         assertIs<CancelDecision.Cancelled>(result)
@@ -77,17 +77,17 @@ class CancelOrderLogicTest {
         assertEquals(mapOf("classic-club" to 1, "blt" to 1), result.releaseStock)
     }
 
-    // ── Error cases ──
+    // -- Error cases --
 
     @Test
-    fun `null order — NotFound`() {
+    fun `null order returns NotFound`() {
         val result = decideCancellation(null, now)
 
         assertIs<CancelDecision.NotFound>(result)
     }
 
     @Test
-    fun `вже скасоване — AlreadyCancelled`() {
+    fun `already cancelled returns AlreadyCancelled`() {
         val order = draftOrder().copy(status = OrderStatus.CANCELLED)
 
         val result = decideCancellation(order, now)
@@ -96,7 +96,7 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `OUT_FOR_DELIVERY — TooLate`() {
+    fun `OUT_FOR_DELIVERY returns TooLate`() {
         val order = draftOrder().copy(status = OrderStatus.OUT_FOR_DELIVERY)
 
         val result = decideCancellation(order, now)
@@ -106,7 +106,7 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `DELIVERED — TooLate`() {
+    fun `DELIVERED returns TooLate`() {
         val order = draftOrder().copy(status = OrderStatus.DELIVERED)
 
         val result = decideCancellation(order, now)
@@ -115,8 +115,8 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `DRAFT але більше 15 хвилин — WindowExpired`() {
-        val order = draftOrder(createdAt = "2026-03-26T11:30:00Z") // 30 хв тому
+    fun `DRAFT older than 15 minutes returns WindowExpired`() {
+        val order = draftOrder(createdAt = "2026-03-26T11:30:00Z") // 30 min ago
 
         val result = decideCancellation(order, now)
 
@@ -125,8 +125,8 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `рівно на межі 15 хв — ще можна скасувати`() {
-        val order = draftOrder(createdAt = "2026-03-26T11:45:00Z") // рівно 15 хв
+    fun `exactly at 15 min boundary is still cancellable`() {
+        val order = draftOrder(createdAt = "2026-03-26T11:45:00Z") // exactly 15 min
 
         val result = decideCancellation(order, now)
 

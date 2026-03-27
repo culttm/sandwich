@@ -6,44 +6,42 @@ import kotlin.test.assertEquals
 class PricingRulesTest {
 
     @Test
-    fun `lineTotal — сендвіч без extras`() {
+    fun `lineTotal sandwich without extras`() {
         assertEquals(120, calculateLineTotal(120, emptyList()))
     }
 
     @Test
-    fun `lineTotal — сендвіч з extras`() {
+    fun `lineTotal sandwich with extras`() {
         assertEquals(170, calculateLineTotal(110, listOf(25, 35)))
     }
 
     @Test
-    fun `discount — менше 3 позицій, без знижки`() {
+    fun `discount less than 3 items no discount`() {
         assertEquals(0, calculateDiscount(2, 230))
     }
 
     @Test
-    fun `discount — рівно 3 позиції, 10%`() {
+    fun `discount exactly 3 items 10 percent`() {
         assertEquals(32, calculateDiscount(3, 329))
     }
 
     @Test
-    fun `discount — 5 позицій, 10%`() {
+    fun `discount 5 items 10 percent`() {
         assertEquals(55, calculateDiscount(5, 550))
     }
 
-    // ── Delivery fee ──
-
     @Test
-    fun `deliveryFee — замовлення менше 500, платна доставка`() {
+    fun `deliveryFee under 500 is paid`() {
         assertEquals(50, calculateDeliveryFee(230))
     }
 
     @Test
-    fun `deliveryFee — замовлення рівно 500, безкоштовна`() {
+    fun `deliveryFee at 500 is free`() {
         assertEquals(0, calculateDeliveryFee(500))
     }
 
     @Test
-    fun `deliveryFee — замовлення більше 500, безкоштовна`() {
+    fun `deliveryFee over 500 is free`() {
         assertEquals(0, calculateDeliveryFee(600))
     }
 }

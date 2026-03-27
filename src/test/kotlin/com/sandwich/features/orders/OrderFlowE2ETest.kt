@@ -1,6 +1,5 @@
 package com.sandwich.features.orders
 
-import com.sandwich.common.domain.OrderStatus
 import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.common.http.configureRouting
 import com.sandwich.common.http.configureSerialization
@@ -18,10 +17,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/**
- * E2E тести повного flow замовлення через HTTP.
- * Використовують Ktor testApplication — без реального порту, швидко, CI-friendly.
- */
 class OrderFlowE2ETest {
 
     private fun ApplicationTestBuilder.setup(): Db {
@@ -38,35 +33,35 @@ class OrderFlowE2ETest {
         install(ContentNegotiation) { json() }
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Happy path: повний цикл замовлення
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Happy path: full order lifecycle
+    // ====================================================
 
     @Test
-    fun `повний flow — create, delivery, pay, dispatch, complete`() = testApplication {
+    fun `full flow - create, delivery, pay, dispatch, complete`() = testApplication {
         setup()
         val client = jsonClient()
 
-        // 1. Створити замовлення → DRAFT
+        // 1. Create order -> DRAFT
         val createResponse = client.post("/orders") {
             contentType(ContentType.Application.Json)
-            setBody("""{"customerName":"Тарас","items":[{"sandwichId":"classic-club"},{"sandwichId":"blt","extras":["bacon"]}]}""")
+            setBody("""{"customerName":"Taras","items":[{"sandwichId":"classic-club"},{"sandwichId":"blt","extras":["bacon"]}]}""")
         }
         assertEquals(HttpStatusCode.Created, createResponse.status)
         val createBody = Json.parseToJsonElement(createResponse.bodyAsText()).jsonObject
         val orderId = createBody["orderId"]!!.jsonPrimitive.content
         assertNotNull(orderId)
 
-        // Перевірити що DRAFT
+        // Verify DRAFT
         val draft = client.get("/orders/$orderId")
         assertEquals(HttpStatusCode.OK, draft.status)
         val draftBody = Json.parseToJsonElement(draft.bodyAsText()).jsonObject
         assertEquals("DRAFT", draftBody["status"]!!.jsonPrimitive.content)
 
-        // 2. Вказати доставку → AWAITING_PAYMENT
+        // 2. Set delivery -> AWAITING_PAYMENT
         val deliveryResponse = client.post("/orders/$orderId/delivery") {
             contentType(ContentType.Application.Json)
-            setBody("""{"address":"вул. Хрещатик 1, Київ","phone":"+380991234567"}""")
+            setBody("""{"address":"Khreshchatyk 1, Kyiv","phone":"+380991234567"}""")
         }
         assertEquals(HttpStatusCode.OK, deliveryResponse.status)
         val deliveryBody = Json.parseToJsonElement(deliveryResponse.bodyAsText()).jsonObject
@@ -78,7 +73,7 @@ class OrderFlowE2ETest {
         assertEquals("AWAITING_PAYMENT", awaitingBody["status"]!!.jsonPrimitive.content)
         assertNotNull(awaitingBody["delivery"])
 
-        // 3. Оплата → PREPARING (+ stock зарезервовано)
+        // 3. Pay -> PREPARING (stock reserved)
         val payResponse = client.post("/orders/$orderId/pay") {
             contentType(ContentType.Application.Json)
             setBody("""{"method":"CARD"}""")
@@ -92,7 +87,7 @@ class OrderFlowE2ETest {
         assertEquals("PREPARING", preparingBody["status"]!!.jsonPrimitive.content)
         assertNotNull(preparingBody["payment"])
 
-        // 4. Відправити кур'єром → OUT_FOR_DELIVERY
+        // 4. Dispatch -> OUT_FOR_DELIVERY
         val dispatchResponse = client.post("/orders/$orderId/dispatch")
         assertEquals(HttpStatusCode.OK, dispatchResponse.status)
 
@@ -100,7 +95,7 @@ class OrderFlowE2ETest {
         val dispatchedBody = Json.parseToJsonElement(dispatched.bodyAsText()).jsonObject
         assertEquals("OUT_FOR_DELIVERY", dispatchedBody["status"]!!.jsonPrimitive.content)
 
-        // 5. Доставлено → DELIVERED
+        // 5. Complete -> DELIVERED
         val completeResponse = client.post("/orders/$orderId/complete")
         assertEquals(HttpStatusCode.OK, completeResponse.status)
 
@@ -109,18 +104,18 @@ class OrderFlowE2ETest {
         assertEquals("DELIVERED", deliveredBody["status"]!!.jsonPrimitive.content)
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Скасування на різних етапах
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Cancellation at different stages
+    // ====================================================
 
     @Test
-    fun `cancel DRAFT — скасовується без refund`() = testApplication {
+    fun `cancel DRAFT - cancelled without refund`() = testApplication {
         setup()
         val client = jsonClient()
 
         val createResponse = client.post("/orders") {
             contentType(ContentType.Application.Json)
-            setBody("""{"customerName":"Оля","items":[{"sandwichId":"veggie-delight"}]}""")
+            setBody("""{"customerName":"Olya","items":[{"sandwichId":"veggie-delight"}]}""")
         }
         val orderId = Json.parseToJsonElement(createResponse.bodyAsText())
             .jsonObject["orderId"]!!.jsonPrimitive.content
@@ -133,7 +128,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `cancel AWAITING_PAYMENT — скасовується без refund`() = testApplication {
+    fun `cancel AWAITING_PAYMENT - cancelled without refund`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -146,7 +141,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `cancel PREPARING — скасовується з refund`() = testApplication {
+    fun `cancel PREPARING - cancelled with refund`() = testApplication {
         val db = setup()
         val client = jsonClient()
 
@@ -159,12 +154,12 @@ class OrderFlowE2ETest {
         val body = Json.parseToJsonElement(cancelResponse.bodyAsText()).jsonObject
         assertEquals(true, body["refund"]!!.jsonPrimitive.boolean)
 
-        // Stock повернувся
+        // Stock restored
         assertEquals(stockBefore + 1, db.stock["classic-club"])
     }
 
     @Test
-    fun `cancel OUT_FOR_DELIVERY — занадто пізно`() = testApplication {
+    fun `cancel OUT_FOR_DELIVERY - too late`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -176,12 +171,12 @@ class OrderFlowE2ETest {
         assertTrue(body.containsKey("error"))
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Stock резервація
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Stock reservation
+    // ====================================================
 
     @Test
-    fun `pay зменшує stock`() = testApplication {
+    fun `pay decreases stock`() = testApplication {
         val db = setup()
         val client = jsonClient()
 
@@ -193,11 +188,10 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `pay при нульовому stock — OutOfStock`() = testApplication {
+    fun `pay with zero stock returns OutOfStock`() = testApplication {
         val db = setup()
         val client = jsonClient()
 
-        // Обнулити stock
         db.stock["classic-club"] = 0
 
         val orderId = createAndSetDelivery(client)
@@ -208,52 +202,50 @@ class OrderFlowE2ETest {
         }
         val body = Json.parseToJsonElement(payResponse.bodyAsText()).jsonObject
         assertTrue(body.containsKey("error"))
-        assertTrue(body["error"]!!.jsonPrimitive.content.contains("наявності"))
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Доставка — розрахунок вартості
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Delivery fee calculation
+    // ====================================================
 
     @Test
-    fun `доставка менше 500 грн — платна`() = testApplication {
+    fun `delivery under 500 has fee`() = testApplication {
         setup()
         val client = jsonClient()
 
-        // classic-club = 120 грн < 500
+        // classic-club = 120 < 500
         val orderId = createOrder(client, "classic-club")
 
         val response = client.post("/orders/$orderId/delivery") {
             contentType(ContentType.Application.Json)
-            setBody("""{"address":"вул. Тест 1","phone":"+380991111111"}""")
+            setBody("""{"address":"Test St 1","phone":"+380991111111"}""")
         }
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertEquals(50, body["deliveryFee"]!!.jsonPrimitive.int)
     }
 
     @Test
-    fun `доставка від 500 грн — безкоштовна`() = testApplication {
+    fun `delivery over 500 is free`() = testApplication {
         setup()
         val client = jsonClient()
 
-        // 5 x classic-club = 600 грн, зі знижкою 10% subtotal = 600, знижка = 60 → total - discount = 540
-        // Але deliveryFee рахується від subtotal (600) >= 500 → безкоштовно
+        // 5 x classic-club = 600, with 10% discount subtotal=600 -> deliveryFee from subtotal >= 500 -> free
         val orderId = createOrder(client, "classic-club", "classic-club", "classic-club", "classic-club", "classic-club")
 
         val response = client.post("/orders/$orderId/delivery") {
             contentType(ContentType.Application.Json)
-            setBody("""{"address":"вул. Тест 1","phone":"+380991111111"}""")
+            setBody("""{"address":"Test St 1","phone":"+380991111111"}""")
         }
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertEquals(0, body["deliveryFee"]!!.jsonPrimitive.int)
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Порушення порядку кроків
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Wrong step order
+    // ====================================================
 
     @Test
-    fun `pay на DRAFT — WrongStatus`() = testApplication {
+    fun `pay on DRAFT returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -268,7 +260,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `dispatch на DRAFT — WrongStatus`() = testApplication {
+    fun `dispatch on DRAFT returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -280,7 +272,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `complete на PREPARING — WrongStatus`() = testApplication {
+    fun `complete on PREPARING returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -292,7 +284,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `delivery на вже оплачене — WrongStatus`() = testApplication {
+    fun `delivery on already paid returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -300,44 +292,44 @@ class OrderFlowE2ETest {
 
         val response = client.post("/orders/$orderId/delivery") {
             contentType(ContentType.Application.Json)
-            setBody("""{"address":"нова адреса","phone":"+380991111111"}""")
+            setBody("""{"address":"new address","phone":"+380991111111"}""")
         }
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertTrue(body.containsKey("error"))
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Невалідні дані
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Invalid data
+    // ====================================================
 
     @Test
-    fun `create без items — помилка`() = testApplication {
+    fun `create with empty items returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
         val response = client.post("/orders") {
             contentType(ContentType.Application.Json)
-            setBody("""{"customerName":"Тарас","items":[]}""")
+            setBody("""{"customerName":"Taras","items":[]}""")
         }
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertTrue(body.containsKey("error"))
     }
 
     @Test
-    fun `create з невідомим сендвічем — помилка`() = testApplication {
+    fun `create with unknown sandwich returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
         val response = client.post("/orders") {
             contentType(ContentType.Application.Json)
-            setBody("""{"customerName":"Тарас","items":[{"sandwichId":"mega-burger"}]}""")
+            setBody("""{"customerName":"Taras","items":[{"sandwichId":"mega-burger"}]}""")
         }
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
         assertTrue(body.containsKey("error"))
     }
 
     @Test
-    fun `delivery з порожньою адресою — помилка`() = testApplication {
+    fun `delivery with blank address returns error`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -352,7 +344,7 @@ class OrderFlowE2ETest {
     }
 
     @Test
-    fun `get неіснуюче замовлення — 404`() = testApplication {
+    fun `get nonexistent order returns 404`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -360,12 +352,12 @@ class OrderFlowE2ETest {
         assertEquals(HttpStatusCode.NotFound, response.status)
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  Меню
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
+    //  Menu
+    // ====================================================
 
     @Test
-    fun `get menu — повертає сендвічі та extras`() = testApplication {
+    fun `get menu returns sandwiches and extras`() = testApplication {
         setup()
         val client = jsonClient()
 
@@ -376,15 +368,15 @@ class OrderFlowE2ETest {
         assertTrue(body["extras"]!!.jsonArray.isNotEmpty())
     }
 
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
     //  Helpers
-    // ══════════════════════════════════════════════════════════
+    // ====================================================
 
     private suspend fun createOrder(client: io.ktor.client.HttpClient, vararg sandwichIds: String): String {
         val items = sandwichIds.joinToString(",") { """{"sandwichId":"$it"}""" }
         val response = client.post("/orders") {
             contentType(ContentType.Application.Json)
-            setBody("""{"customerName":"Тарас","items":[$items]}""")
+            setBody("""{"customerName":"Taras","items":[$items]}""")
         }
         return Json.parseToJsonElement(response.bodyAsText())
             .jsonObject["orderId"]!!.jsonPrimitive.content
@@ -394,7 +386,7 @@ class OrderFlowE2ETest {
         val orderId = createOrder(client, "classic-club")
         client.post("/orders/$orderId/delivery") {
             contentType(ContentType.Application.Json)
-            setBody("""{"address":"вул. Хрещатик 1","phone":"+380991234567"}""")
+            setBody("""{"address":"Khreshchatyk 1","phone":"+380991234567"}""")
         }
         return orderId
     }

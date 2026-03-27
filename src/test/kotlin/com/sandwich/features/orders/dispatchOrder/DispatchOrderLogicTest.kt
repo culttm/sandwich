@@ -10,7 +10,7 @@ class DispatchOrderLogicTest {
 
     private fun preparingOrder() = Order(
         id = "order-1",
-        customerName = "Тарас",
+        customerName = "Taras",
         items = emptyList(),
         subtotal = 120,
         discount = 0,
@@ -21,7 +21,7 @@ class DispatchOrderLogicTest {
     )
 
     @Test
-    fun `PREPARING — Dispatched`() {
+    fun `PREPARING transitions to Dispatched`() {
         val result = decideDispatch(preparingOrder())
 
         assertIs<DispatchDecision.Dispatched>(result)
@@ -29,14 +29,14 @@ class DispatchOrderLogicTest {
     }
 
     @Test
-    fun `null — NotFound`() {
+    fun `null returns NotFound`() {
         val result = decideDispatch(null)
 
         assertIs<DispatchDecision.NotFound>(result)
     }
 
     @Test
-    fun `DRAFT — WrongStatus`() {
+    fun `DRAFT returns WrongStatus`() {
         val order = preparingOrder().copy(status = OrderStatus.DRAFT)
 
         val result = decideDispatch(order)
@@ -46,7 +46,7 @@ class DispatchOrderLogicTest {
     }
 
     @Test
-    fun `DELIVERED — WrongStatus`() {
+    fun `DELIVERED returns WrongStatus`() {
         val order = preparingOrder().copy(status = OrderStatus.DELIVERED)
 
         val result = decideDispatch(order)
