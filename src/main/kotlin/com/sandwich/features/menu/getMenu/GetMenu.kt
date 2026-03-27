@@ -1,11 +1,13 @@
 package com.sandwich.features.menu.getMenu
 
 import com.sandwich.common.domain.Menu
-import com.sandwich.common.infra.MenuStore
+import com.sandwich.common.infra.Db
 
 // ── Level 1: Direct Query ──
-// Просте читання — без бізнес-логіки, без sandwich.
 
-fun GetMenu(menuStore: MenuStore): suspend () -> Menu = {
-    menuStore.getMenu()
+fun GetMenu(db: Db): suspend () -> Menu = {
+    Menu(
+        sandwiches = db.sandwiches.values.toList(),
+        extras = db.extras.values.toList()
+    )
 }

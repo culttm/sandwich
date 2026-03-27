@@ -1,15 +1,13 @@
 package com.sandwich.features.orders.placeOrder
 
 import com.sandwich.common.domain.*
-import com.sandwich.common.infra.MenuStore
-import com.sandwich.common.infra.OrderStore
+import com.sandwich.common.infra.Db
 import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.util.UUID
 
 // ══════════════════════════════════════════════════════════════
 //  Level 3: Impureim Sandwich (Recawr)
-//  Головний showcase — вся бізнес-логіка ЧИСТА (fun, не suspend)
 // ══════════════════════════════════════════════════════════════
 
 // ── Request DTO ──
@@ -26,7 +24,7 @@ data class OrderItemRequest(
     val extras: List<String> = emptyList()
 )
 
-// ── Decision (sealed — кожна гілка = окремий outcome) ──
+// ── Decision ──
 
 sealed interface PlaceOrderDecision {
     data class Accepted(val order: Order) : PlaceOrderDecision
@@ -38,7 +36,7 @@ sealed interface PlaceOrderDecision {
     data class TooManyExtras(val sandwichId: String, val max: Int) : PlaceOrderDecision
 }
 
-// ── Pure logic (NOT suspend — тестується без моків) ──
+// ── Pure logic (NOT suspend) ──
 
 fun buildOrder(
     orderId: String,
@@ -48,7 +46,6 @@ fun buildOrder(
     extras: Map<String, ExtraItem>,
     now: Instant
 ): PlaceOrderDecision {
-    // validate
     if (customerName.isBlank())
         return PlaceOrderDecision.BlankName()
 
@@ -70,7 +67,6 @@ fun buildOrder(
     if (tooManyExtras != null)
         return PlaceOrderDecision.TooManyExtras(tooManyExtras.sandwichId, MAX_EXTRAS_PER_SANDWICH)
 
-    // calculate
     val lines = items.map { item ->
         val sandwich = menu.getValue(item.sandwichId)
         val itemExtras = item.extras.map { extras.getValue(it) }
@@ -102,7 +98,7 @@ fun buildOrder(
     )
 }
 
-// ── Response DTO ──
+// ── Response DTOs ──
 
 @Serializable
 data class PlaceOrderResponse(val orderId: String, val total: Int)
@@ -110,26 +106,23 @@ data class PlaceOrderResponse(val orderId: String, val total: Int)
 @Serializable
 data class ErrorResponse(val error: String)
 
-// ── Handler (Recawr Sandwich) ──
+// ── Handler (Recawr Sandwich) — приймає тільки Db ──
 
-fun PlaceOrder(
-    menuStore: MenuStore,
-    orderStore: OrderStore
-): suspend (PlaceOrderRequest) -> Any = handler@{ request ->
+fun PlaceOrder(db: Db): suspend (PlaceOrderRequest) -> Any = handler@{ request ->
 
-    // 🔴 READ — impure: генерація ID, час, дані з "БД"
+    // 🔴 READ
     val orderId = UUID.randomUUID().toString()
     val now = Instant.now()
-    val menu = menuStore.getSandwichMap()
-    val extras = menuStore.getExtrasMap()
+    val menu = db.sandwiches.toMap()
+    val extras = db.extras.toMap()
 
-    // 🟢 CALCULATE — pure: вся бізнес-логіка тут
+    // 🟢 CALCULATE
     val decision = buildOrder(orderId, request.customerName, request.items, menu, extras, now)
 
-    // 🔴 WRITE — impure: зберегти або повернути помилку
+    // 🔴 WRITE
     when (decision) {
         is PlaceOrderDecision.Accepted -> {
-            orderStore.save(decision.order)
+            db.orders[decision.order.id] = decision.order
             PlaceOrderResponse(orderId = decision.order.id, total = decision.order.total)
         }
         is PlaceOrderDecision.BlankName -> ErrorResponse(decision.message)

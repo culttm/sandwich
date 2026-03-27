@@ -2,14 +2,13 @@ package com.sandwich.features.orders.cancelOrder
 
 import com.sandwich.common.domain.Order
 import com.sandwich.common.domain.OrderStatus
-import com.sandwich.common.infra.OrderStore
+import com.sandwich.common.infra.Db
 import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.Instant
 
 // ══════════════════════════════════════════════════════════
 //  Level 3: Impureim Sandwich (Recawr)
-//  Скасування замовлення — є бізнес-правила → sealed decision
 // ══════════════════════════════════════════════════════════
 
 // ── Decision ──
@@ -51,12 +50,12 @@ data class CancelResponse(val orderId: String, val status: String)
 @Serializable
 data class CancelError(val error: String)
 
-// ── Handler (Recawr Sandwich) ──
+// ── Handler (Recawr Sandwich) — приймає тільки Db ──
 
-fun CancelOrder(orderStore: OrderStore): suspend (String) -> Any = handler@{ orderId ->
+fun CancelOrder(db: Db): suspend (String) -> Any = handler@{ orderId ->
 
     // 🔴 READ
-    val order = orderStore.findById(orderId)
+    val order = db.orders[orderId]
     val now = Instant.now()
 
     // 🟢 CALCULATE
@@ -65,7 +64,7 @@ fun CancelOrder(orderStore: OrderStore): suspend (String) -> Any = handler@{ ord
     // 🔴 WRITE
     when (decision) {
         is CancelDecision.Cancelled -> {
-            orderStore.update(decision.order)
+            db.orders[decision.order.id] = decision.order
             CancelResponse(orderId = decision.order.id, status = "CANCELLED")
         }
         is CancelDecision.NotFound ->

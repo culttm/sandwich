@@ -7,23 +7,21 @@ import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.common.http.configureMonitoring
 import com.sandwich.common.http.configureRouting
 import com.sandwich.common.http.configureSerialization
-import com.sandwich.common.infra.MenuStore
-import com.sandwich.common.infra.OrderStore
+import com.sandwich.common.infra.Db
+import com.sandwich.common.infra.seed
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 fun SandwichHttpApi(logger: Logger = LoggerFactory.getLogger("SandwichHttpApi")) = App {
     logger.info("Starting SandwichHttpApi")
 
-    // ── Infrastructure (impure) ──
-    val menuStore = MenuStore()
-    val orderStore = OrderStore()
+    val db = Db().apply { seed() }
 
     val server = HttpServer(8080) {
         configureSerialization()
         configureErrorHandling()
         configureMonitoring()
-        configureRouting(menuStore, orderStore)
+        configureRouting(db)
     }
     server.start()
 

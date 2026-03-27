@@ -1,13 +1,10 @@
 package com.sandwich.features.orders.getOrder
 
 import com.sandwich.common.domain.Order
-import com.sandwich.common.infra.OrderStore
+import com.sandwich.common.infra.Db
 
-// ══════════════════════════════════════════════════
-//  Level 1: Direct Query
-//  Просте читання — без бізнес-логіки, без sandwich.
-// ══════════════════════════════════════════════════
+// ── Level 1: Direct Query ──
 
-fun GetOrder(orderStore: OrderStore): suspend (String) -> Order? = { orderId ->
-    orderStore.findById(orderId)
+fun GetOrder(db: Db): suspend (String) -> Order? = { orderId ->
+    db.orders[orderId]
 }

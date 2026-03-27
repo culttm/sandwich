@@ -1,7 +1,6 @@
 package com.sandwich.common.http
 
-import com.sandwich.common.infra.MenuStore
-import com.sandwich.common.infra.OrderStore
+import com.sandwich.common.infra.Db
 import com.sandwich.features.menu.getMenu.GetMenu
 import com.sandwich.features.orders.cancelOrder.CancelOrder
 import com.sandwich.features.orders.getOrder.GetOrder
@@ -13,24 +12,21 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
-fun Application.configureRouting(menuStore: MenuStore, orderStore: OrderStore) {
-    // ── Wire slices (composition root) ──
-    val getMenu = GetMenu(menuStore)
-    val placeOrder = PlaceOrder(menuStore, orderStore)
-    val getOrder = GetOrder(orderStore)
-    val cancelOrder = CancelOrder(orderStore)
+fun Application.configureRouting(db: Db) {
+    val getMenu = GetMenu(db)
+    val placeOrder = PlaceOrder(db)
+    val getOrder = GetOrder(db)
+    val cancelOrder = CancelOrder(db)
 
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
         }
 
-        // ── Menu ──
         get("/menu") {
             call.respond(getMenu())
         }
 
-        // ── Orders ──
         post("/orders") {
             val request = call.receive<PlaceOrderRequest>()
             call.respond(HttpStatusCode.Created, placeOrder(request))
