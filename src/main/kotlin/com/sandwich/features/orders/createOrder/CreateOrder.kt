@@ -1,4 +1,4 @@
-package com.sandwich.features.orders.placeOrder
+package com.sandwich.features.orders.createOrder
 
 import com.sandwich.common.domain.*
 import com.sandwich.common.infra.Db
@@ -7,13 +7,13 @@ import java.time.Instant
 import java.util.UUID
 
 // ══════════════════════════════════════════════════════════════
-//  Level 3: Impureim Sandwich (Recawr)
+//  Крок 1: Створити чернетку замовлення → DRAFT
 // ══════════════════════════════════════════════════════════════
 
 // ── Request DTO ──
 
 @Serializable
-data class PlaceOrderRequest(
+data class CreateOrderRequest(
     val customerName: String,
     val items: List<OrderItemRequest>
 )
@@ -26,14 +26,14 @@ data class OrderItemRequest(
 
 // ── Decision ──
 
-sealed interface PlaceOrderDecision {
-    data class Accepted(val order: Order) : PlaceOrderDecision
-    data class EmptyOrder(val message: String = "Замовлення не може бути порожнім") : PlaceOrderDecision
-    data class BlankName(val message: String = "Вкажіть ім'я") : PlaceOrderDecision
-    data class TooManyItems(val max: Int) : PlaceOrderDecision
-    data class UnknownSandwich(val ids: List<String>) : PlaceOrderDecision
-    data class UnknownExtras(val ids: List<String>) : PlaceOrderDecision
-    data class TooManyExtras(val sandwichId: String, val max: Int) : PlaceOrderDecision
+sealed interface CreateOrderDecision {
+    data class Created(val order: Order) : CreateOrderDecision
+    data class EmptyOrder(val message: String = "Замовлення не може бути порожнім") : CreateOrderDecision
+    data class BlankName(val message: String = "Вкажіть ім'я") : CreateOrderDecision
+    data class TooManyItems(val max: Int) : CreateOrderDecision
+    data class UnknownSandwich(val ids: List<String>) : CreateOrderDecision
+    data class UnknownExtras(val ids: List<String>) : CreateOrderDecision
+    data class TooManyExtras(val sandwichId: String, val max: Int) : CreateOrderDecision
 }
 
 // ── Pure logic (NOT suspend) ──
@@ -45,27 +45,27 @@ fun buildOrder(
     menu: Map<String, MenuItem>,
     extras: Map<String, ExtraItem>,
     now: Instant
-): PlaceOrderDecision {
+): CreateOrderDecision {
     if (customerName.isBlank())
-        return PlaceOrderDecision.BlankName()
+        return CreateOrderDecision.BlankName()
 
     if (items.isEmpty())
-        return PlaceOrderDecision.EmptyOrder()
+        return CreateOrderDecision.EmptyOrder()
 
     if (items.size > MAX_ITEMS_PER_ORDER)
-        return PlaceOrderDecision.TooManyItems(MAX_ITEMS_PER_ORDER)
+        return CreateOrderDecision.TooManyItems(MAX_ITEMS_PER_ORDER)
 
     val unknownSandwiches = items.map { it.sandwichId }.filter { it !in menu }
     if (unknownSandwiches.isNotEmpty())
-        return PlaceOrderDecision.UnknownSandwich(unknownSandwiches)
+        return CreateOrderDecision.UnknownSandwich(unknownSandwiches)
 
     val unknownExtras = items.flatMap { it.extras }.distinct().filter { it !in extras }
     if (unknownExtras.isNotEmpty())
-        return PlaceOrderDecision.UnknownExtras(unknownExtras)
+        return CreateOrderDecision.UnknownExtras(unknownExtras)
 
     val tooManyExtras = items.find { it.extras.size > MAX_EXTRAS_PER_SANDWICH }
     if (tooManyExtras != null)
-        return PlaceOrderDecision.TooManyExtras(tooManyExtras.sandwichId, MAX_EXTRAS_PER_SANDWICH)
+        return CreateOrderDecision.TooManyExtras(tooManyExtras.sandwichId, MAX_EXTRAS_PER_SANDWICH)
 
     val lines = items.map { item ->
         val sandwich = menu.getValue(item.sandwichId)
@@ -84,7 +84,7 @@ fun buildOrder(
     val discount = calculateDiscount(lines.size, subtotal)
     val total = subtotal - discount
 
-    return PlaceOrderDecision.Accepted(
+    return CreateOrderDecision.Created(
         Order(
             id = orderId,
             customerName = customerName.trim(),
@@ -92,7 +92,7 @@ fun buildOrder(
             subtotal = subtotal,
             discount = discount,
             total = total,
-            status = OrderStatus.PENDING,
+            status = OrderStatus.DRAFT,
             createdAt = now.toString()
         )
     )
@@ -101,14 +101,14 @@ fun buildOrder(
 // ── Response DTOs ──
 
 @Serializable
-data class PlaceOrderResponse(val orderId: String, val total: Int)
+data class CreateOrderResponse(val orderId: String, val total: Int)
 
 @Serializable
-data class ErrorResponse(val error: String)
+data class CreateOrderError(val error: String)
 
-// ── Handler (Recawr Sandwich) — приймає тільки Db ──
+// ── Handler (Recawr Sandwich) ──
 
-fun PlaceOrder(db: Db): suspend (PlaceOrderRequest) -> Any = handler@{ request ->
+fun CreateOrder(db: Db): suspend (CreateOrderRequest) -> Any = handler@{ request ->
 
     // 🔴 READ
     val orderId = UUID.randomUUID().toString()
@@ -121,15 +121,15 @@ fun PlaceOrder(db: Db): suspend (PlaceOrderRequest) -> Any = handler@{ request -
 
     // 🔴 WRITE
     when (decision) {
-        is PlaceOrderDecision.Accepted -> {
+        is CreateOrderDecision.Created -> {
             db.orders[decision.order.id] = decision.order
-            PlaceOrderResponse(orderId = decision.order.id, total = decision.order.total)
+            CreateOrderResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is PlaceOrderDecision.BlankName -> ErrorResponse(decision.message)
-        is PlaceOrderDecision.EmptyOrder -> ErrorResponse(decision.message)
-        is PlaceOrderDecision.TooManyItems -> ErrorResponse("Максимум ${decision.max} сендвічів")
-        is PlaceOrderDecision.UnknownSandwich -> ErrorResponse("Невідомі сендвічі: ${decision.ids}")
-        is PlaceOrderDecision.UnknownExtras -> ErrorResponse("Невідомі додатки: ${decision.ids}")
-        is PlaceOrderDecision.TooManyExtras -> ErrorResponse("Макс ${decision.max} додатків для ${decision.sandwichId}")
+        is CreateOrderDecision.BlankName -> CreateOrderError(decision.message)
+        is CreateOrderDecision.EmptyOrder -> CreateOrderError(decision.message)
+        is CreateOrderDecision.TooManyItems -> CreateOrderError("Максимум ${decision.max} сендвічів")
+        is CreateOrderDecision.UnknownSandwich -> CreateOrderError("Невідомі сендвічі: ${decision.ids}")
+        is CreateOrderDecision.UnknownExtras -> CreateOrderError("Невідомі додатки: ${decision.ids}")
+        is CreateOrderDecision.TooManyExtras -> CreateOrderError("Макс ${decision.max} додатків для ${decision.sandwichId}")
     }
 }

@@ -3,9 +3,6 @@ package com.sandwich.common.domain
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/**
- * Тести чистих функцій ціноутворення.
- */
 class PricingRulesTest {
 
     @Test
@@ -31,5 +28,22 @@ class PricingRulesTest {
     @Test
     fun `discount — 5 позицій, 10%`() {
         assertEquals(55, calculateDiscount(5, 550))
+    }
+
+    // ── Delivery fee ──
+
+    @Test
+    fun `deliveryFee — замовлення менше 500, платна доставка`() {
+        assertEquals(50, calculateDeliveryFee(230))
+    }
+
+    @Test
+    fun `deliveryFee — замовлення рівно 500, безкоштовна`() {
+        assertEquals(0, calculateDeliveryFee(500))
+    }
+
+    @Test
+    fun `deliveryFee — замовлення більше 500, безкоштовна`() {
+        assertEquals(0, calculateDeliveryFee(600))
     }
 }

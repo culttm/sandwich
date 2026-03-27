@@ -7,14 +7,21 @@ import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.Instant
 
-// ══════════════════════════════════════════════════════════
-//  Level 3: Impureim Sandwich (Recawr)
-// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+//  Скасування замовлення
+//  DRAFT / AWAITING_PAYMENT → просто скасовуємо
+//  PREPARING                → скасовуємо + refund + release stock
+//  OUT_FOR_DELIVERY / DELIVERED → занадто пізно
+// ══════════════════════════════════════════════════════════════
 
 // ── Decision ──
 
 sealed interface CancelDecision {
-    data class Cancelled(val order: Order) : CancelDecision
+    data class Cancelled(
+        val order: Order,
+        val releaseStock: Map<String, Int>,  // sandwichId → кількість до повернення
+        val refund: Boolean                  // чи потрібен refund
+    ) : CancelDecision
     data object NotFound : CancelDecision
     data class AlreadyCancelled(val orderId: String) : CancelDecision
     data class TooLate(val status: OrderStatus) : CancelDecision
@@ -25,6 +32,12 @@ sealed interface CancelDecision {
 
 private const val CANCEL_WINDOW_MINUTES = 15L
 
+private val CANCELLABLE_STATUSES = setOf(
+    OrderStatus.DRAFT,
+    OrderStatus.AWAITING_PAYMENT,
+    OrderStatus.PREPARING
+)
+
 fun decideCancellation(order: Order?, now: Instant): CancelDecision {
     if (order == null)
         return CancelDecision.NotFound
@@ -32,25 +45,37 @@ fun decideCancellation(order: Order?, now: Instant): CancelDecision {
     if (order.status == OrderStatus.CANCELLED)
         return CancelDecision.AlreadyCancelled(order.id)
 
-    if (order.status != OrderStatus.PENDING)
+    if (order.status !in CANCELLABLE_STATUSES)
         return CancelDecision.TooLate(order.status)
 
     val elapsed = Duration.between(Instant.parse(order.createdAt), now)
     if (elapsed.toMinutes() > CANCEL_WINDOW_MINUTES)
         return CancelDecision.WindowExpired(CANCEL_WINDOW_MINUTES)
 
-    return CancelDecision.Cancelled(order.copy(status = OrderStatus.CANCELLED))
+    // Якщо замовлення було оплачене (PREPARING) → release stock + refund
+    val wasPaid = order.payment != null
+    val stockToRelease = if (wasPaid) {
+        order.items.groupingBy { it.sandwichId }.eachCount()
+    } else {
+        emptyMap()
+    }
+
+    return CancelDecision.Cancelled(
+        order = order.copy(status = OrderStatus.CANCELLED),
+        releaseStock = stockToRelease,
+        refund = wasPaid
+    )
 }
 
 // ── Response DTOs ──
 
 @Serializable
-data class CancelResponse(val orderId: String, val status: String)
+data class CancelResponse(val orderId: String, val status: String, val refund: Boolean)
 
 @Serializable
 data class CancelError(val error: String)
 
-// ── Handler (Recawr Sandwich) — приймає тільки Db ──
+// ── Handler (Recawr Sandwich) ──
 
 fun CancelOrder(db: Db): suspend (String) -> Any = handler@{ orderId ->
 
@@ -65,7 +90,14 @@ fun CancelOrder(db: Db): suspend (String) -> Any = handler@{ orderId ->
     when (decision) {
         is CancelDecision.Cancelled -> {
             db.orders[decision.order.id] = decision.order
-            CancelResponse(orderId = decision.order.id, status = "CANCELLED")
+            decision.releaseStock.forEach { (id, qty) ->
+                db.stock.compute(id) { _, current -> (current ?: 0) + qty }
+            }
+            CancelResponse(
+                orderId = decision.order.id,
+                status = "CANCELLED",
+                refund = decision.refund
+            )
         }
         is CancelDecision.NotFound ->
             CancelError("Замовлення не знайдено")

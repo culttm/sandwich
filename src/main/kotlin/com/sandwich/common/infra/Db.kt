@@ -14,6 +14,7 @@ class Db {
     val sandwiches = ConcurrentHashMap<String, MenuItem>()
     val extras = ConcurrentHashMap<String, ExtraItem>()
     val orders = ConcurrentHashMap<String, Order>()
+    val stock = ConcurrentHashMap<String, Int>()   // sandwichId → скільки можемо зробити
 }
 
 fun Db.seed() {
@@ -32,6 +33,14 @@ fun Db.seed() {
             "bacon"        to ExtraItem("bacon",        "Бекон",           35),
             "avocado"      to ExtraItem("avocado",      "Авокадо",         30),
             "extra-sauce"  to ExtraItem("extra-sauce",  "Соус додатковий", 10),
+        )
+    )
+    stock.putAll(
+        mapOf(
+            "classic-club"   to 50,
+            "turkey-avocado" to 30,
+            "veggie-delight" to 40,
+            "blt"            to 35,
         )
     )
 }

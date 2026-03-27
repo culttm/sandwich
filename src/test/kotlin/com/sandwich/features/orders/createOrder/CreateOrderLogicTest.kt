@@ -1,4 +1,4 @@
-package com.sandwich.features.orders.placeOrder
+package com.sandwich.features.orders.createOrder
 
 import com.sandwich.common.domain.ExtraItem
 import com.sandwich.common.domain.MenuItem
@@ -7,15 +7,13 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 /**
  * Тести чистої функції buildOrder.
  * Жодних моків, жодного runTest, жодних корутин.
- * Просто дані → рішення.
  */
-class PlaceOrderLogicTest {
-
-    // ── Test fixtures (plain data) ──
+class CreateOrderLogicTest {
 
     private val menu = mapOf(
         "classic-club" to MenuItem("classic-club", "Classic Club", 120),
@@ -35,15 +33,18 @@ class PlaceOrderLogicTest {
     // ── Happy path ──
 
     @Test
-    fun `один сендвіч без extras — accepted`() {
+    fun `один сендвіч — створює DRAFT`() {
         val items = listOf(OrderItemRequest("classic-club"))
 
         val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.Accepted>(result)
+        assertIs<CreateOrderDecision.Created>(result)
+        assertEquals(OrderStatus.DRAFT, result.order.status)
         assertEquals(120, result.order.total)
         assertEquals(0, result.order.discount)
-        assertEquals(OrderStatus.PENDING, result.order.status)
+        assertEquals(0, result.order.deliveryFee)
+        assertNull(result.order.delivery)
+        assertNull(result.order.payment)
         assertEquals("Тарас", result.order.customerName)
     }
 
@@ -55,15 +56,14 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Оля", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.Accepted>(result)
-        // BLT (110) + cheese (25) + bacon (35) = 170
-        assertEquals(170, result.order.total)
+        assertIs<CreateOrderDecision.Created>(result)
+        assertEquals(170, result.order.total) // BLT(110) + cheese(25) + bacon(35)
         assertEquals(1, result.order.items.size)
         assertEquals(2, result.order.items[0].extras.size)
     }
 
     @Test
-    fun `3+ сендвічі — знижка 10%`() {
+    fun `3+ сендвічі — знижка 10 відсотків`() {
         val items = listOf(
             OrderItemRequest("classic-club"),   // 120
             OrderItemRequest("blt"),             // 110
@@ -72,7 +72,7 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Марія", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.Accepted>(result)
+        assertIs<CreateOrderDecision.Created>(result)
         val subtotal = 120 + 110 + 99  // 329
         val discount = subtotal * 10 / 100  // 32
         assertEquals(subtotal, result.order.subtotal)
@@ -89,9 +89,9 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Ігор", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.Accepted>(result)
+        assertIs<CreateOrderDecision.Created>(result)
         assertEquals(0, result.order.discount)
-        assertEquals(230, result.order.total) // 120 + 110
+        assertEquals(230, result.order.total)
     }
 
     // ── Validation errors ──
@@ -102,14 +102,14 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "  ", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.BlankName>(result)
+        assertIs<CreateOrderDecision.BlankName>(result)
     }
 
     @Test
     fun `порожнє замовлення — EmptyOrder`() {
         val result = buildOrder(orderId, "Тарас", emptyList(), menu, extras, now)
 
-        assertIs<PlaceOrderDecision.EmptyOrder>(result)
+        assertIs<CreateOrderDecision.EmptyOrder>(result)
     }
 
     @Test
@@ -118,7 +118,7 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.TooManyItems>(result)
+        assertIs<CreateOrderDecision.TooManyItems>(result)
         assertEquals(10, result.max)
     }
 
@@ -128,7 +128,7 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.UnknownSandwich>(result)
+        assertIs<CreateOrderDecision.UnknownSandwich>(result)
         assertEquals(listOf("mega-burger"), result.ids)
     }
 
@@ -138,7 +138,7 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.UnknownExtras>(result)
+        assertIs<CreateOrderDecision.UnknownExtras>(result)
         assertEquals(listOf("truffle-oil"), result.ids)
     }
 
@@ -149,7 +149,7 @@ class PlaceOrderLogicTest {
 
         val result = buildOrder(orderId, "Тарас", items, menu, extras, now)
 
-        assertIs<PlaceOrderDecision.TooManyExtras>(result)
+        assertIs<CreateOrderDecision.TooManyExtras>(result)
         assertEquals("blt", result.sandwichId)
         assertEquals(5, result.max)
     }

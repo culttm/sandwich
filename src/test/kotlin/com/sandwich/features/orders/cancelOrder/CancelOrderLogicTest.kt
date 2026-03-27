@@ -1,42 +1,80 @@
 package com.sandwich.features.orders.cancelOrder
 
-import com.sandwich.common.domain.Order
-import com.sandwich.common.domain.OrderStatus
+import com.sandwich.common.domain.*
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
-/**
- * Тести чистої функції decideCancellation.
- * Жодних моків, жодного runTest.
- */
 class CancelOrderLogicTest {
 
     private val now = Instant.parse("2026-03-26T12:00:00Z")
 
-    private fun pendingOrder(createdAt: String = "2026-03-26T11:50:00Z") = Order(
+    private fun draftOrder(createdAt: String = "2026-03-26T11:50:00Z") = Order(
         id = "order-1",
         customerName = "Тарас",
         items = emptyList(),
         subtotal = 120,
         discount = 0,
         total = 120,
-        status = OrderStatus.PENDING,
+        status = OrderStatus.DRAFT,
         createdAt = createdAt
     )
 
-    // ── Happy path ──
+    private fun preparingOrder(createdAt: String = "2026-03-26T11:50:00Z") = Order(
+        id = "order-1",
+        customerName = "Тарас",
+        items = listOf(
+            OrderLine("classic-club", "Classic Club", 120, emptyList(), 120),
+            OrderLine("blt", "BLT", 110, emptyList(), 110),
+        ),
+        subtotal = 230,
+        discount = 0,
+        deliveryFee = 50,
+        total = 280,
+        status = OrderStatus.PREPARING,
+        payment = PaymentInfo(PaymentMethod.CARD, "2026-03-26T11:55:00Z", "tx-1"),
+        delivery = DeliveryInfo("вул. Хрещатик 1", "+380991234567", null, 50),
+        createdAt = createdAt
+    )
+
+    // ── Happy path: DRAFT → cancel без refund ──
 
     @Test
-    fun `PENDING замовлення в межах вікна — Cancelled`() {
-        val order = pendingOrder(createdAt = "2026-03-26T11:50:00Z") // 10 хв тому
+    fun `DRAFT в межах вікна — Cancelled, без refund, без release stock`() {
+        val result = decideCancellation(draftOrder(), now)
+
+        assertIs<CancelDecision.Cancelled>(result)
+        assertEquals(OrderStatus.CANCELLED, result.order.status)
+        assertFalse(result.refund)
+        assertTrue(result.releaseStock.isEmpty())
+    }
+
+    // ── Happy path: AWAITING_PAYMENT → cancel без refund ──
+
+    @Test
+    fun `AWAITING_PAYMENT — Cancelled, без refund`() {
+        val order = draftOrder().copy(status = OrderStatus.AWAITING_PAYMENT)
 
         val result = decideCancellation(order, now)
 
         assertIs<CancelDecision.Cancelled>(result)
+        assertFalse(result.refund)
+        assertTrue(result.releaseStock.isEmpty())
+    }
+
+    // ── Happy path: PREPARING → cancel з refund + release stock ──
+
+    @Test
+    fun `PREPARING — Cancelled з refund та release stock`() {
+        val result = decideCancellation(preparingOrder(), now)
+
+        assertIs<CancelDecision.Cancelled>(result)
         assertEquals(OrderStatus.CANCELLED, result.order.status)
-        assertEquals("order-1", result.order.id)
+        assertTrue(result.refund)
+        assertEquals(mapOf("classic-club" to 1, "blt" to 1), result.releaseStock)
     }
 
     // ── Error cases ──
@@ -50,7 +88,7 @@ class CancelOrderLogicTest {
 
     @Test
     fun `вже скасоване — AlreadyCancelled`() {
-        val order = pendingOrder().copy(status = OrderStatus.CANCELLED)
+        val order = draftOrder().copy(status = OrderStatus.CANCELLED)
 
         val result = decideCancellation(order, now)
 
@@ -58,18 +96,18 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `PREPARING — TooLate`() {
-        val order = pendingOrder().copy(status = OrderStatus.PREPARING)
+    fun `OUT_FOR_DELIVERY — TooLate`() {
+        val order = draftOrder().copy(status = OrderStatus.OUT_FOR_DELIVERY)
 
         val result = decideCancellation(order, now)
 
         assertIs<CancelDecision.TooLate>(result)
-        assertEquals(OrderStatus.PREPARING, result.status)
+        assertEquals(OrderStatus.OUT_FOR_DELIVERY, result.status)
     }
 
     @Test
-    fun `READY — TooLate`() {
-        val order = pendingOrder().copy(status = OrderStatus.READY)
+    fun `DELIVERED — TooLate`() {
+        val order = draftOrder().copy(status = OrderStatus.DELIVERED)
 
         val result = decideCancellation(order, now)
 
@@ -77,8 +115,8 @@ class CancelOrderLogicTest {
     }
 
     @Test
-    fun `PENDING але більше 15 хвилин — WindowExpired`() {
-        val order = pendingOrder(createdAt = "2026-03-26T11:30:00Z") // 30 хв тому
+    fun `DRAFT але більше 15 хвилин — WindowExpired`() {
+        val order = draftOrder(createdAt = "2026-03-26T11:30:00Z") // 30 хв тому
 
         val result = decideCancellation(order, now)
 
@@ -88,7 +126,7 @@ class CancelOrderLogicTest {
 
     @Test
     fun `рівно на межі 15 хв — ще можна скасувати`() {
-        val order = pendingOrder(createdAt = "2026-03-26T11:45:00Z") // рівно 15 хв
+        val order = draftOrder(createdAt = "2026-03-26T11:45:00Z") // рівно 15 хв
 
         val result = decideCancellation(order, now)
 
