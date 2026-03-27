@@ -1,1 +1,17 @@
-.idea
+# Gradle
+.gradle/
+build/
+out/
+
+# Kotlin
+.kotlin/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
