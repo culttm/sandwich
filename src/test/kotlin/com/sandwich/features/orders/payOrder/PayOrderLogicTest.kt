@@ -11,6 +11,7 @@ class PayOrderLogicTest {
 
     private val now = Instant.parse("2026-03-26T12:00:00Z")
     private val txId = "tx-123"
+    private val fullStock = mapOf("classic-club" to 50, "blt" to 35)
 
     private fun awaitingOrder(vararg sandwichIds: String) = Order(
         id = "order-1",
@@ -33,7 +34,11 @@ class PayOrderLogicTest {
         createdAt = "2026-03-26T11:50:00Z"
     )
 
-    private val fullStock = mapOf("classic-club" to 50, "blt" to 35)
+    private fun input(
+        order: Order? = awaitingOrder("classic-club"),
+        stock: Map<String, Int> = fullStock,
+        method: PaymentMethod = PaymentMethod.CARD
+    ) = PayOrderInput(order = order, stock = stock, method = method, now = now, transactionId = txId)
 
     // -- Happy path --
 
@@ -41,7 +46,7 @@ class PayOrderLogicTest {
     fun `card payment transitions to PREPARING and reserves stock`() {
         val order = awaitingOrder("classic-club", "blt")
 
-        val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(order = order))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(OrderStatus.PREPARING, result.order.status)
@@ -53,9 +58,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `cash on delivery also works`() {
-        val order = awaitingOrder("classic-club")
-
-        val result = decidePayment(order, fullStock, PaymentMethod.CASH_ON_DELIVERY, now, txId)
+        val result = decidePayment(input(method = PaymentMethod.CASH_ON_DELIVERY))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(PaymentMethod.CASH_ON_DELIVERY, result.order.payment!!.method)
@@ -65,7 +68,7 @@ class PayOrderLogicTest {
     fun `two identical sandwiches reduce stock by 2`() {
         val order = awaitingOrder("classic-club", "classic-club")
 
-        val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(order = order))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(mapOf("classic-club" to 2), result.stockReductions)
@@ -75,7 +78,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `null order returns NotFound`() {
-        val result = decidePayment(null, fullStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(order = null))
 
         assertIs<PayOrderDecision.NotFound>(result)
     }
@@ -84,7 +87,7 @@ class PayOrderLogicTest {
     fun `non-AWAITING_PAYMENT returns WrongStatus`() {
         val order = awaitingOrder("classic-club").copy(status = OrderStatus.DRAFT)
 
-        val result = decidePayment(order, fullStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(order = order))
 
         assertIs<PayOrderDecision.WrongStatus>(result)
         assertEquals(OrderStatus.DRAFT, result.current)
@@ -92,10 +95,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `zero stock returns OutOfStock`() {
-        val order = awaitingOrder("classic-club")
-        val emptyStock = mapOf("classic-club" to 0)
-
-        val result = decidePayment(order, emptyStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(stock = mapOf("classic-club" to 0)))
 
         assertIs<PayOrderDecision.OutOfStock>(result)
         assertEquals(listOf("classic-club"), result.unavailable)
@@ -104,9 +104,8 @@ class PayOrderLogicTest {
     @Test
     fun `insufficient stock for quantity returns OutOfStock`() {
         val order = awaitingOrder("classic-club", "classic-club", "classic-club")
-        val lowStock = mapOf("classic-club" to 2)
 
-        val result = decidePayment(order, lowStock, PaymentMethod.CARD, now, txId)
+        val result = decidePayment(input(order = order, stock = mapOf("classic-club" to 2)))
 
         assertIs<PayOrderDecision.OutOfStock>(result)
     }

@@ -20,9 +20,11 @@ class DispatchOrderLogicTest {
         createdAt = "2026-03-26T12:00:00Z"
     )
 
+    private fun input(order: Order?) = DispatchOrderInput(order = order)
+
     @Test
     fun `PREPARING transitions to Dispatched`() {
-        val result = decideDispatch(preparingOrder())
+        val result = decideDispatch(input(preparingOrder()))
 
         assertIs<DispatchDecision.Dispatched>(result)
         assertEquals(OrderStatus.OUT_FOR_DELIVERY, result.order.status)
@@ -30,7 +32,7 @@ class DispatchOrderLogicTest {
 
     @Test
     fun `null returns NotFound`() {
-        val result = decideDispatch(null)
+        val result = decideDispatch(input(null))
 
         assertIs<DispatchDecision.NotFound>(result)
     }
@@ -39,7 +41,7 @@ class DispatchOrderLogicTest {
     fun `DRAFT returns WrongStatus`() {
         val order = preparingOrder().copy(status = OrderStatus.DRAFT)
 
-        val result = decideDispatch(order)
+        val result = decideDispatch(input(order))
 
         assertIs<DispatchDecision.WrongStatus>(result)
         assertEquals(OrderStatus.DRAFT, result.current)
@@ -49,7 +51,7 @@ class DispatchOrderLogicTest {
     fun `DELIVERED returns WrongStatus`() {
         val order = preparingOrder().copy(status = OrderStatus.DELIVERED)
 
-        val result = decideDispatch(order)
+        val result = decideDispatch(input(order))
 
         assertIs<DispatchDecision.WrongStatus>(result)
     }

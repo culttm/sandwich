@@ -3,25 +3,21 @@ package com.sandwich.common.http
 import com.sandwich.common.infra.Db
 import com.sandwich.features.menu.getMenu.GetMenu
 import com.sandwich.features.orders.cancelOrder.cancelOrderRoute
-import com.sandwich.features.orders.completeDelivery.CompleteDelivery
+import com.sandwich.features.orders.completeDelivery.completeDeliveryRoute
 import com.sandwich.features.orders.createOrder.createOrderRoute
-import com.sandwich.features.orders.dispatchOrder.DispatchOrder
+import com.sandwich.features.orders.dispatchOrder.dispatchOrderRoute
 import com.sandwich.features.orders.getOrder.GetOrder
-import com.sandwich.features.orders.payOrder.PayOrder
-import com.sandwich.features.orders.payOrder.PayOrderRequest
+import com.sandwich.features.orders.payOrder.payOrderRoute
 import com.sandwich.features.orders.setDelivery.setDeliveryRoute
 import io.ktor.http.*
 import io.ktor.server.application.*
-import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 
 fun Application.configureRouting(db: Db) {
     val getMenu = GetMenu(db)
     val getOrder = GetOrder(db)
-    val payOrder = PayOrder(db)
-    val dispatchOrder = DispatchOrder(db)
-    val completeDelivery = CompleteDelivery(db)
+
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
@@ -43,25 +39,12 @@ fun Application.configureRouting(db: Db) {
         }
 
         setDeliveryRoute(db)
-
-        post("/orders/{id}/pay") {
-            val id = call.parameters["id"]!!
-            val request = call.receive<PayOrderRequest>()
-            call.respond(payOrder(id, request))
-        }
+        payOrderRoute(db)
 
         // ── Fulfillment ──
 
-        post("/orders/{id}/dispatch") {
-            val id = call.parameters["id"]!!
-            call.respond(dispatchOrder(id))
-        }
-
-        post("/orders/{id}/complete") {
-            val id = call.parameters["id"]!!
-            call.respond(completeDelivery(id))
-        }
-
+        dispatchOrderRoute(db)
+        completeDeliveryRoute(db)
         cancelOrderRoute(db)
     }
 }
