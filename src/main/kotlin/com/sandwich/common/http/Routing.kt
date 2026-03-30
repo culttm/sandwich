@@ -4,8 +4,7 @@ import com.sandwich.common.infra.Db
 import com.sandwich.features.menu.getMenu.GetMenu
 import com.sandwich.features.orders.cancelOrder.CancelOrder
 import com.sandwich.features.orders.completeDelivery.CompleteDelivery
-import com.sandwich.features.orders.createOrder.CreateOrder
-import com.sandwich.features.orders.createOrder.CreateOrderRequest
+import com.sandwich.features.orders.createOrder.createOrderRoute
 import com.sandwich.features.orders.dispatchOrder.DispatchOrder
 import com.sandwich.features.orders.getOrder.GetOrder
 import com.sandwich.features.orders.payOrder.PayOrder
@@ -20,7 +19,6 @@ import io.ktor.server.routing.*
 
 fun Application.configureRouting(db: Db) {
     val getMenu = GetMenu(db)
-    val createOrder = CreateOrder(db)
     val getOrder = GetOrder(db)
     val setDelivery = SetDelivery(db)
     val payOrder = PayOrder(db)
@@ -39,10 +37,7 @@ fun Application.configureRouting(db: Db) {
 
         // ── Checkout flow ──
 
-        post("/orders") {
-            val request = call.receive<CreateOrderRequest>()
-            call.respond(HttpStatusCode.Created, createOrder(request))
-        }
+        createOrderRoute(db)
 
         get("/orders/{id}") {
             val id = call.parameters["id"]!!
