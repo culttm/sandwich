@@ -5,9 +5,19 @@ import com.sandwich.common.app.Teardown
 import com.sandwich.common.http.HttpServer
 import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.common.http.configureMonitoring
-import com.sandwich.common.http.configureRouting
 import com.sandwich.common.http.configureSerialization
+import com.sandwich.features.menu.getMenu.getMenuRoute
+import com.sandwich.features.orders.cancelOrder.cancelOrderRoute
+import com.sandwich.features.orders.completeDelivery.completeDeliveryRoute
+import com.sandwich.features.orders.createOrder.createOrderRoute
+import com.sandwich.features.orders.dispatchOrder.dispatchOrderRoute
+import com.sandwich.features.orders.getOrder.getOrderRoute
+import com.sandwich.features.orders.payOrder.payOrderRoute
+import com.sandwich.features.orders.setDelivery.setDeliveryRoute
 import com.sandwich.common.infra.Db
+import io.ktor.http.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
 import com.sandwich.common.infra.seed
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -22,7 +32,24 @@ fun SandwichHttpApi(
         configureSerialization()
         configureErrorHandling()
         configureMonitoring()
-        configureRouting(db)
+        routing {
+            get("/health") {
+                call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+            }
+
+            getMenuRoute(db)
+
+            // ── Checkout flow ──
+            createOrderRoute(db)
+            getOrderRoute(db)
+            setDeliveryRoute(db)
+            payOrderRoute(db)
+
+            // ── Fulfillment ──
+            dispatchOrderRoute(db)
+            completeDeliveryRoute(db)
+            cancelOrderRoute(db)
+        }
     }
     server.start()
 
