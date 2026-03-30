@@ -2,7 +2,7 @@ package com.sandwich.common.http
 
 import com.sandwich.common.infra.Db
 import com.sandwich.features.menu.getMenu.GetMenu
-import com.sandwich.features.orders.cancelOrder.CancelOrder
+import com.sandwich.features.orders.cancelOrder.cancelOrderRoute
 import com.sandwich.features.orders.completeDelivery.CompleteDelivery
 import com.sandwich.features.orders.createOrder.createOrderRoute
 import com.sandwich.features.orders.dispatchOrder.DispatchOrder
@@ -24,8 +24,6 @@ fun Application.configureRouting(db: Db) {
     val payOrder = PayOrder(db)
     val dispatchOrder = DispatchOrder(db)
     val completeDelivery = CompleteDelivery(db)
-    val cancelOrder = CancelOrder(db)
-
     routing {
         get("/health") {
             call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
@@ -70,9 +68,6 @@ fun Application.configureRouting(db: Db) {
             call.respond(completeDelivery(id))
         }
 
-        post("/orders/{id}/cancel") {
-            val id = call.parameters["id"]!!
-            call.respond(cancelOrder(id))
-        }
+        cancelOrderRoute(db)
     }
 }

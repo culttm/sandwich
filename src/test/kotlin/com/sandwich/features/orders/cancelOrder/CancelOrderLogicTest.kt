@@ -40,11 +40,13 @@ class CancelOrderLogicTest {
         createdAt = createdAt
     )
 
+    private fun input(order: Order?) = CancelOrderInput(order = order, now = now)
+
     // -- Happy path: DRAFT cancel without refund --
 
     @Test
     fun `DRAFT within window is Cancelled without refund or stock release`() {
-        val result = decideCancellation(draftOrder(), now)
+        val result = decideCancellation(input(draftOrder()))
 
         assertIs<CancelDecision.Cancelled>(result)
         assertEquals(OrderStatus.CANCELLED, result.order.status)
@@ -58,7 +60,7 @@ class CancelOrderLogicTest {
     fun `AWAITING_PAYMENT is Cancelled without refund`() {
         val order = draftOrder().copy(status = OrderStatus.AWAITING_PAYMENT)
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.Cancelled>(result)
         assertFalse(result.refund)
@@ -69,7 +71,7 @@ class CancelOrderLogicTest {
 
     @Test
     fun `PREPARING is Cancelled with refund and stock release`() {
-        val result = decideCancellation(preparingOrder(), now)
+        val result = decideCancellation(input(preparingOrder()))
 
         assertIs<CancelDecision.Cancelled>(result)
         assertEquals(OrderStatus.CANCELLED, result.order.status)
@@ -81,7 +83,7 @@ class CancelOrderLogicTest {
 
     @Test
     fun `null order returns NotFound`() {
-        val result = decideCancellation(null, now)
+        val result = decideCancellation(input(null))
 
         assertIs<CancelDecision.NotFound>(result)
     }
@@ -90,7 +92,7 @@ class CancelOrderLogicTest {
     fun `already cancelled returns AlreadyCancelled`() {
         val order = draftOrder().copy(status = OrderStatus.CANCELLED)
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.AlreadyCancelled>(result)
     }
@@ -99,7 +101,7 @@ class CancelOrderLogicTest {
     fun `OUT_FOR_DELIVERY returns TooLate`() {
         val order = draftOrder().copy(status = OrderStatus.OUT_FOR_DELIVERY)
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.TooLate>(result)
         assertEquals(OrderStatus.OUT_FOR_DELIVERY, result.status)
@@ -109,7 +111,7 @@ class CancelOrderLogicTest {
     fun `DELIVERED returns TooLate`() {
         val order = draftOrder().copy(status = OrderStatus.DELIVERED)
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.TooLate>(result)
     }
@@ -118,7 +120,7 @@ class CancelOrderLogicTest {
     fun `DRAFT older than 15 minutes returns WindowExpired`() {
         val order = draftOrder(createdAt = "2026-03-26T11:30:00Z") // 30 min ago
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.WindowExpired>(result)
         assertEquals(15L, result.maxMinutes)
@@ -128,7 +130,7 @@ class CancelOrderLogicTest {
     fun `exactly at 15 min boundary is still cancellable`() {
         val order = draftOrder(createdAt = "2026-03-26T11:45:00Z") // exactly 15 min
 
-        val result = decideCancellation(order, now)
+        val result = decideCancellation(input(order))
 
         assertIs<CancelDecision.Cancelled>(result)
     }
