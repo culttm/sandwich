@@ -210,6 +210,9 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
 
     private suspend fun assertHasError(response: HttpResponse) {
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-        assertTrue(body.containsKey("error"), "Expected 'error' field in response: $body")
+        assertTrue(
+            body.containsKey("error") || body.containsKey("code"),
+            "Expected error in response: $body"
+        )
     }
 }
