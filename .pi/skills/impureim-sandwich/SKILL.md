@@ -36,41 +36,130 @@ Structure Kotlin backend code as pure core + impure shell.
 
 Impurity is **transitive**: if `f` calls impure `g`, then `f` is impure too — up the entire call stack.
 
-## Canonical Sandwich Structure (5-layer)
+## Canonical Sandwich: 3-Phase Decomposition
+
+Each command slice decomposes into three explicit phases:
+
+```
+GatherInput  →  decide  →  ProduceOutput
+   🔴 READ      🟢 PURE      🔴 WRITE
+```
+
+### Phase 1: GatherInput (🔴 READ)
+
+Collects everything the pure function needs. Returns a plain data object.
 
 ```kotlin
-suspend fun handleRequest(dto: RequestDto): HttpResult {
-    // 🟢 PURE — parse & validate (before any IO)
-    val validated = validate(dto)
-        ?: return HttpResult.BadRequest("Invalid input")
+fun GatherSetDeliveryInput(
+    readOrder: (String) -> Order?
+): (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
+    SetDeliveryInput(
+        order = readOrder(orderId),
+        address = request.address,
+        phone = request.phone,
+        deliveryTime = request.deliveryTime
+    )
+}
+```
 
-    // 🔴 IMPURE — read (suspend)
-    val data = repository.fetch(validated.id)
+### Phase 2: decide (🟢 PURE)
 
-    // 🟢 PURE — business decision (NOT suspend, no IO)
-    val decision = decide(data, validated)
+Pure function. No `suspend`. Takes data, returns sealed decision.
 
-    // 🔴 IMPURE — write (suspend)
-    return when (decision) {
-        is Accept -> {
-            repository.save(decision.result)
-            HttpResult.Created(decision.result.id)  // 🟢 pure: translate
+```kotlin
+fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
+    val order = input.order
+        ?: return SetDeliveryDecision.NotFound
+    if (order.status != OrderStatus.DRAFT)
+        return SetDeliveryDecision.WrongStatus(order.status)
+    if (input.address.isBlank())
+        return SetDeliveryDecision.BlankAddress()
+
+    val deliveryFee = calculateDeliveryFee(order.subtotal)
+    return SetDeliveryDecision.DeliverySet(
+        order.copy(status = OrderStatus.AWAITING_PAYMENT, deliveryFee = deliveryFee)
+    )
+}
+```
+
+### Phase 3: ProduceOutput (🔴 WRITE)
+
+Persists the decision + maps errors to typed exceptions.
+
+```kotlin
+fun ProduceSetDeliveryOutput(
+    storeOrder: (Order) -> Unit
+): suspend (SetDeliveryDecision) -> SetDeliveryResponse = { decision ->
+    when (decision) {
+        is SetDeliveryDecision.DeliverySet -> {
+            storeOrder(decision.order)
+            SetDeliveryResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is Reject -> HttpResult.Conflict(decision.reason)  // 🟢 pure: translate
+        is SetDeliveryDecision.NotFound ->
+            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+        is SetDeliveryDecision.WrongStatus ->
+            orderError(WRONG_STATUS, "Очікується DRAFT, поточний: ${decision.current}")
     }
 }
 ```
 
-Rules:
-- **Max 2 impure phases** (read + write)
-- **1–3 pure layers** (validate, decide, translate)
-- Adding more pure layers → safe
-- Adding more impure layers → Dagwood sandwich, redesign needed
+### Handler: Pure Orchestrator
+
+Composes the three phases. The handler itself is trivial — just sequencing.
+
+```kotlin
+fun SetDeliveryHandler(
+    gatherInput: (String, SetDeliveryRequest) -> SetDeliveryInput,
+    decide: (SetDeliveryInput) -> SetDeliveryDecision,
+    produceOutput: suspend (SetDeliveryDecision) -> SetDeliveryResponse
+): suspend (String, SetDeliveryRequest) -> SetDeliveryResponse = { orderId, request ->
+    val input = gatherInput(orderId, request)
+    val decision = decide(input)
+    produceOutput(decision)
+}
+```
+
+### Wiring: Route as Composition Root
+
+The route function wires real dependencies into lambdas:
+
+```kotlin
+fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
+    SetDeliveryHandler(
+        gatherInput = GatherSetDeliveryInput(
+            readOrder = { id -> db.orders[id] }
+        ),
+        decide = ::decideDelivery,
+        produceOutput = ProduceSetDeliveryOutput(
+            storeOrder = { order -> db.orders[order.id] = order }
+        )
+    )
+)
+```
+
+## Error Handling: Typed Error Vocabulary
+
+Errors modeled as shared enum with HTTP status mapping. StatusPages catches and converts:
+
+```kotlin
+enum class OrderErrorCode(val status: HttpStatusCode) {
+    ORDER_NOT_FOUND(HttpStatusCode.NotFound),
+    WRONG_STATUS(HttpStatusCode.Conflict),
+    BLANK_ADDRESS(HttpStatusCode.BadRequest),
+}
+
+data class OrderError(val code: OrderErrorCode, val message: String)
+class OrderException(val error: OrderError) : Exception(error.message)
+fun orderError(code: OrderErrorCode, message: String): Nothing =
+    throw OrderException(OrderError(code, message))
+```
+
+ProduceOutput maps error decisions to `orderError()` calls — they never return, StatusPages catches.
 
 ## Decision Tree
 
 ### Writing new code
-→ Use Recawr template: Read → Calculate → Write
+→ Use 3-phase decomposition: GatherInput → decide → ProduceOutput
 → See [patterns.md](references/patterns.md)
 
 ### Refactoring existing code
@@ -119,6 +208,34 @@ val (toUpdate, invalid) = partition(items, existing) // calculate first
 toUpdate.forEach { repo.update(it) }                 // write after
 ```
 
+### ❌ Decision logic in ProduceOutput
+```kotlin
+// WRONG: business rule inside the WRITE phase
+fun ProduceOutput(storeOrder: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
+    when (decision) {
+        is Created -> {
+            if (decision.order.total > 1000) { /* business rule here! */ }
+            storeOrder(decision.order)
+            // ...
+        }
+    }
+}
+```
+
+### ✅ All logic in decide(), ProduceOutput only persists + maps errors
+```kotlin
+// RIGHT: ProduceOutput is dumb — store or throw
+fun ProduceOutput(storeOrder: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
+    when (decision) {
+        is Created -> {
+            storeOrder(decision.order)
+            Response(orderId = decision.order.id)
+        }
+        is Error -> orderError(ERROR_CODE, decision.message)
+    }
+}
+```
+
 ## Key Principle
 
 > **Dependency Rejection**: instead of injecting a function that fetches data, fetch the data on the edge and pass the result to a pure function.
@@ -133,6 +250,8 @@ FP:   call Repository on edge → pass data to pure logic → testable
 Before finishing any implementation, verify:
 1. All business logic functions are `fun` (not `suspend fun`)
 2. No impurity markers inside pure functions
-3. `suspend` only appears on the outermost edge layer
+3. `suspend` only appears in GatherInput, ProduceOutput, and the handler's return type
 4. Decisions modeled as sealed class/interface
 5. Pure functions testable with plain data (no mocks, no runTest)
+6. Handler is trivial 3-line composition: gather → decide → produce
+7. ProduceOutput contains NO business logic — only persistence + error mapping

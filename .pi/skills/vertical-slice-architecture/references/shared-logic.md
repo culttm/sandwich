@@ -10,13 +10,12 @@ The hardest question in Vertical Slice Architecture: where does shared code live
 
 | Category | Example | Why OK |
 |---|---|---|
-| Pure validation | `parseOrderItems(dtos): List<OrderItem>?` | No IO, no state |
-| Pure calculations | `loyaltyDiscount(tier, subtotal): BigDecimal` | Deterministic |
-| Domain rules | `OrderRules.MIN_TOTAL`, `isEligibleForRefund(order)` | Business constants/logic |
-| Value objects | `ProductId`, `OrderId`, `Money` | Data types |
-| DTOs shared between slices | `HttpResult`, `PageRequest`, `SortOrder` | Transport types |
-| Extension functions | `String.toProductId()`, `BigDecimal.roundCents()` | Pure transforms |
-| Enums / constants | `OrderStatus`, `ShippingZone` | Static data |
+| Pure calculations | `calculateLineTotal(price, extras): Int` | No IO, deterministic |
+| Pure pricing rules | `calculateDeliveryFee(subtotal): Int` | Business constant/logic |
+| Domain types | `Order`, `OrderStatus`, `MenuItem` | Data types |
+| Business constants | `MAX_ITEMS_PER_ORDER`, `FREE_DELIVERY_THRESHOLD` | Static data |
+| Error vocabulary | `OrderErrorCode`, `OrderException`, `orderError()` | Shared within feature group |
+| Infrastructure | `Db`, `HttpServer`, `ErrorHandling` | Wiring code |
 
 ## What CANNOT Go in common/
 
@@ -27,51 +26,46 @@ The hardest question in Vertical Slice Architecture: where does shared code live
 | Services | `class InventoryService(repo)` | Becomes a hidden layer |
 | Functions taking repos | `fun check(repo: InventoryRepo)` | Impure by dependency |
 | Orchestration / workflow | `fun processOrderFlow(...)` | Business logic + IO mixed |
-| Anything with side effects | `fun notify(email: String)` | Impure — sends email |
 
 ## Litmus Tests
 
 ### 🚩 Test 1: Does it have `suspend`?
 
 ```kotlin
-// ❌ common/validation/OrderValidation.kt
+// ❌ common/domain/OrderValidation.kt
 suspend fun validateAndEnrich(dto: OrderDto, repo: ProductRepo): ValidatedOrder? {
     val products = repo.findByIds(dto.productIds)  // suspend = impure!
-    // ...
 }
 ```
 
-If `suspend` is in `common/`, it's a 🚩. Move the IO to the slice, pass data to the pure function.
+Fix: move the IO to GatherInput, pass data to the pure function.
 
 ```kotlin
-// ✅ common/validation/OrderValidation.kt
+// ✅ common/domain/OrderValidation.kt
 fun validateOrder(dto: OrderDto, products: Map<ProductId, Product>): ValidatedOrder? {
-    // pure — products already fetched by the slice
+    // pure — products already fetched by GatherInput
 }
 ```
 
 ### 🚩 Test 2: Does it accept a repository/service as parameter?
 
 ```kotlin
-// ❌ common/pricing/PricingCalculator.kt
-fun calculateTotal(items: List<OrderItem>, pricingRepo: PricingRepository): BigDecimal {
+// ❌ common/domain/PricingCalculator.kt
+fun calculateTotal(items: List<OrderItem>, pricingRepo: PricingRepository): Int {
     val prices = pricingRepo.getCurrentPrices(...)  // impure dependency!
-    // ...
 }
 ```
 
 Fix: accept data, not the source of data.
 
 ```kotlin
-// ✅ common/pricing/PricingCalculator.kt
-fun calculateTotal(items: List<OrderItem>, prices: Map<ProductId, BigDecimal>): BigDecimal {
-    return items.sumOf { prices[it.productId]!! * it.quantity.toBigDecimal() }
+// ✅ common/domain/PricingRules.kt
+fun calculateLineTotal(sandwichPrice: Int, extraPrices: List<Int>): Int {
+    return sandwichPrice + extraPrices.sum()  // pure
 }
 ```
 
 ### 🚩 Test 3: Is common/ growing faster than slices?
-
-Track the ratio. If `common/` has more lines than the average slice — something is wrong.
 
 ```
 Healthy:    common/ = 15% of code, slices = 85%
@@ -82,7 +76,7 @@ Unhealthy:  common/ = 50% of code, slices = 50%  ← hidden service layer
 
 ```kotlin
 // ❌ common/helpers/OrderHelper.kt
-import com.example.orders.placeOrder.PlaceOrderRequest  // importing from a slice!
+import com.sandwich.features.orders.createOrder.CreateOrderRequest  // importing from a slice!
 ```
 
 `common/` must NEVER import from a slice. Dependencies flow one way: slice → common.
@@ -94,20 +88,18 @@ import com.example.orders.placeOrder.PlaceOrderRequest  // importing from a slic
 ### Occurrence 1-2: leave it
 
 ```kotlin
-// orders/placeOrder/PlaceOrder.kt
-fun parseOrderItems(dtos: List<OrderItemDto>): List<OrderItem>? { ... }
+// orders/createOrder/Domain.kt
+val total = subtotal - discount
 
-// orders/updateOrder/UpdateOrder.kt
-fun parseOrderItems(dtos: List<OrderItemDto>): List<OrderItem>? { ... }  // same code — OK for now
+// orders/setDelivery/Domain.kt
+val total = subtotal - discount + deliveryFee  // similar but different — leave it
 ```
 
 ### Occurrence 3: extract to common/
 
 ```kotlin
-// common/validation/OrderValidation.kt
-fun parseOrderItems(dtos: List<OrderItemDto>): List<OrderItem>? { ... }  // ← extracted
-
-// All three slices now import from common/
+// common/domain/PricingRules.kt
+fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THRESHOLD) 0 else DELIVERY_FEE
 ```
 
 ### Why not extract immediately?
@@ -116,70 +108,50 @@ fun parseOrderItems(dtos: List<OrderItemDto>): List<OrderItem>? { ... }  // ← 
 - First two slices may look similar but evolve differently
 - Third occurrence confirms the pattern is real
 
-## Shared Domain Rules
+## Shared Error Vocabulary
 
-Business rules that apply across multiple slices — extract as **pure objects**:
+Error codes shared within a feature group — one enum per aggregate:
 
 ```kotlin
-// common/domain/OrderRules.kt
-object OrderRules {
-    val MIN_ORDER_TOTAL = BigDecimal("10.00")
-    val MAX_ITEMS_PER_ORDER = 50
-    val REFUND_WINDOW_DAYS = 30L
+// orders/OrderError.kt
+enum class OrderErrorCode(val status: HttpStatusCode) {
+    // createOrder
+    BLANK_NAME(HttpStatusCode.BadRequest),
+    EMPTY_ORDER(HttpStatusCode.BadRequest),
+    UNKNOWN_SANDWICH(HttpStatusCode.BadRequest),
 
-    fun isEligibleForRefund(order: Order, now: Instant): Boolean =
-        Duration.between(order.createdAt, now).toDays() <= REFUND_WINDOW_DAYS
-            && order.status != OrderStatus.SHIPPED
+    // shared across slices
+    ORDER_NOT_FOUND(HttpStatusCode.NotFound),
+    WRONG_STATUS(HttpStatusCode.Conflict),
 
-    fun validateMinimumTotal(total: BigDecimal): Boolean =
-        total >= MIN_ORDER_TOTAL
+    // setDelivery
+    BLANK_ADDRESS(HttpStatusCode.BadRequest),
+
+    // cancelOrder
+    TOO_LATE(HttpStatusCode.Conflict),
 }
 ```
 
-Slices use these rules but **don't depend on each other**:
-
-```kotlin
-// orders/placeOrder/PlaceOrder.kt
-if (!OrderRules.validateMinimumTotal(total)) return InvalidRequest("Below minimum")
-
-// orders/cancelOrder/CancelOrder.kt
-if (!OrderRules.isEligibleForRefund(order, now)) return NotRefundable("Window expired")
-```
+Each slice adds its own codes. `ProduceOutput` calls `orderError(CODE, message)`.
+StatusPages catches `OrderException` → HTTP response. No manual HTTP status mapping in slices.
 
 ## common/ Structure
 
 ```
 common/
 ├── domain/
-│   ├── OrderRules.kt          ← pure business rules
-│   ├── PricingRules.kt        ← pure pricing logic
-│   └── types/
-│       ├── ProductId.kt       ← value objects
-│       ├── OrderId.kt
-│       └── Money.kt
-├── validation/
-│   └── OrderValidation.kt    ← pure parsing/validation
+│   ├── PricingRules.kt        ← pure business rules (calculateLineTotal, calculateDiscount, etc.)
+│   └── Types.kt               ← shared domain types (Order, OrderLine, OrderStatus, DeliveryInfo)
+├── http/
+│   ├── ErrorHandling.kt       ← StatusPages config (catches OrderException)
+│   ├── HttpServer.kt          ← Ktor server factory
+│   ├── Monitoring.kt          ← call logging
+│   └── Serialization.kt       ← JSON config
 ├── infra/
-│   ├── Database.kt            ← DB connection (impure, but infra)
-│   ├── HttpResult.kt          ← response type
-│   └── RouteConfig.kt         ← routing setup
-└── extensions/
-    └── BigDecimalExt.kt       ← pure extension functions
+│   └── Db.kt                  ← in-memory store (sandwiches, extras, orders, stock)
+└── app/
+    └── App.kt                 ← lifecycle (start/teardown)
 ```
 
-**Note:** `common/infra/` is the only place where impure code is OK — it's infrastructure wiring, not business logic.
-
-## Anti-Pattern: common/ Evolution Into Service Layer
-
-```
-Month 1:    common/DateUtils.kt                          ← fine
-Month 3:    common/OrderValidation.kt                    ← fine
-Month 6:    common/InventoryService.kt                   ← 🚩 service!
-Month 9:    common/services/OrderOrchestrator.kt         ← 🚩🚩 orchestrator!
-Month 12:   common/services/ has 15 files                ← you rebuilt layered architecture
-```
-
-**Prevention:**
-- Code review rule: any new file in `common/` must justify why it's not in a slice
-- `common/` has no `suspend` functions (except `infra/`)
-- `common/` has no classes with constructor-injected dependencies
+**Note:** `common/http/` and `common/infra/` contain impure infrastructure code — that's OK,
+it's wiring, not business logic. `common/domain/` must remain **purely pure**.

@@ -16,11 +16,15 @@ How to spot when Vertical Slice Architecture is breaking down.
    └── presentation/OrderController.kt    ← controller layer
 ```
 
-**Fix:** flatten into one file per slice.
+**Fix:** use 3-phase decomposition within each slice.
 
 ```
-✅ orders/placeOrder/
-   └── PlaceOrder.kt    ← DTO + decision + pure fn + handler
+✅ orders/createOrder/
+   ├── CreateOrder.kt             ← HTTP DTOs + route
+   ├── Domain.kt                  ← pure types + logic
+   ├── CreateOrderHandler.kt      ← trivial orchestrator
+   ├── GatherCreateOrderInput.kt  ← READ phase
+   └── ProduceCreateOrderOutput.kt ← WRITE phase
 ```
 
 ### 2. common/ Becomes a Service Layer
@@ -35,11 +39,11 @@ How to spot when Vertical Slice Architecture is breaking down.
 ```
 
 **Litmus tests:**
-- `suspend` in `common/` (except `infra/`) → 🚩
+- `suspend` in `common/` (except `infra/` and `http/`) → 🚩
 - Constructor-injected dependencies in `common/` → 🚩
 - `common/` has more code than any 3 slices combined → 🚩
 
-**Fix:** move impure logic into slices. Keep only pure functions in `common/`.
+**Fix:** move impure logic into slices. Keep only pure functions in `common/domain/`.
 
 ### 3. Slice Calls Another Slice
 
@@ -47,21 +51,15 @@ How to spot when Vertical Slice Architecture is breaking down.
 
 ```kotlin
 // ❌ orders/cancelOrder/CancelOrder.kt
-import com.example.orders.placeOrder.buildOrder  // importing from another slice!
-
-fun CancelOrder(...) = { request ->
-    val refund = PlaceOrder(inventoryRepo, orderRepo, pricingRepo)(reverseRequest)  // calling another slice!
-}
+import com.sandwich.features.orders.createOrder.buildOrder  // importing from another slice!
 ```
 
-**Fix:** extract shared logic into `common/` as a pure function.
+**Fix:** extract shared logic into `common/domain/` as a pure function.
 
 ```kotlin
-// ✅ common/domain/RefundRules.kt
-fun calculateRefund(order: Order, cancelledAt: Instant): BigDecimal { /* pure */ }
-
-// ✅ orders/cancelOrder/CancelOrder.kt
-import com.example.common.domain.calculateRefund  // import from common, not another slice
+// ✅ common/domain/PricingRules.kt
+fun calculateDeliveryFee(subtotal: Int): Int { /* pure */ }
+// Both setDelivery and cancelOrder use it
 ```
 
 ### 4. Feature Factory — Inconsistent Domain Rules
@@ -69,103 +67,63 @@ import com.example.common.domain.calculateRefund  // import from common, not ano
 **Symptom:** same business rule hardcoded differently in multiple slices.
 
 ```kotlin
-// ❌ placeOrder/PlaceOrder.kt
-if (total < BigDecimal("10.00")) return InvalidRequest("Min $10")
+// ❌ setDelivery/Domain.kt
+val deliveryFee = if (subtotal > 500) 0 else 50
 
-// ❌ updateOrder/UpdateOrder.kt
-if (total < BigDecimal("15.00")) return InvalidRequest("Min $15")  // different threshold!
+// ❌ payOrder/Domain.kt
+val deliveryFee = if (subtotal > 400) 0 else 60  // different threshold!
 ```
 
-**Fix:** extract shared domain rules.
+**Fix:** extract shared domain rules into `common/domain/`.
 
 ```kotlin
-// ✅ common/domain/OrderRules.kt
-object OrderRules {
-    val MIN_ORDER_TOTAL = BigDecimal("10.00")
-}
-
-// Both slices:
-if (!OrderRules.validateMinimumTotal(total)) return InvalidRequest("Below minimum")
+// ✅ common/domain/PricingRules.kt
+fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THRESHOLD) 0 else DELIVERY_FEE
 ```
 
-### 5. God Slice — Too Much in One Handler
+### 5. God Slice — Too Much in One File
 
-**Symptom:** slice file > 150 lines, handler > 80 lines, mixed pure and impure code.
+**Symptom:** Domain.kt > 100 lines, business logic scattered across files.
+
+**Fix:** keep Domain.kt focused on the pure decision. Complex calculations → `common/domain/`.
+
+### 6. Business Logic in ProduceOutput
+
+**Symptom:** ProduceOutput contains conditional logic beyond simple `when` + `orderError()`.
 
 ```kotlin
-// ❌ 200-line handler with interleaved reads and calculations
-fun PlaceOrder(...) = { request ->
-    val items = parseItems(request.items) ?: return@PlaceOrder HttpResult.BadRequest("...")
-    val stock = inventoryRepo.checkStock(...)
-    val missing = items.filter { ... }            // pure mixed with impure above
-    if (missing.isNotEmpty()) return@PlaceOrder ...
-    val prices = pricingRepo.getCurrentPrices(...)
-    val subtotal = items.sumOf { ... }            // pure mixed with impure above
-    val customer = customerRepo.findById(...)
-    val discount = when { ... }                   // pure logic scattered
-    val shipping = when { ... }                   // pure logic scattered
-    // ... 50 more lines
+// ❌ ProduceOutput with business logic
+fun ProduceOutput(store: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
+    when (decision) {
+        is Created -> {
+            if (decision.order.total > 1000) {  // ← business rule!
+                applyVipDiscount(decision.order)  // ← side effect!
+            }
+            store(decision.order)
+            Response(...)
+        }
+    }
 }
 ```
 
-**Fix:** extract pure logic into a separate function. Apply Recawr pattern.
+**Fix:** all logic belongs in `decide()`. ProduceOutput only persists + maps errors.
+
+### 7. Handler With Logic
+
+**Symptom:** Handler does more than 3 lines (gather → decide → produce).
 
 ```kotlin
-// ✅ All reads upfront, all logic in one pure function
-fun PlaceOrder(...) = { request ->
-    val items = parseItems(request.items) ?: return@PlaceOrder HttpResult.BadRequest("...")
-    val stock = inventoryRepo.checkStock(...)                     // 🔴 read
-    val prices = pricingRepo.getCurrentPrices(...)                // 🔴 read
-    val customer = customerRepo.findById(...)                     // 🔴 read
-    val decision = buildOrder(items, stock, prices, customer)     // 🟢 all pure logic here
-    when (decision) { ... }                                       // 🔴 write
+// ❌ Handler with extra logic
+fun Handler(...) = { request ->
+    val input = gatherInput(request)
+    if (input.order == null) return@Handler errorResponse  // ← logic!
+    val decision = decide(input)
+    val enriched = enrichDecision(decision)  // ← extra step!
+    produceOutput(enriched)
 }
 ```
 
-### 6. Missing Conventions — Three Styles in One Project
-
-**Symptom:** each developer writes slices differently — classes vs functions, different naming, different patterns.
-
-```kotlin
-// Dev A: class-based
-class PlaceOrderHandler @Inject constructor(private val repo: OrderRepository) {
-    suspend fun handle(request: PlaceOrderRequest): HttpResult { ... }
-}
-
-// Dev B: curried function
-fun PlaceOrder(repo: OrderRepository): suspend (PlaceOrderRequest) -> HttpResult = { ... }
-
-// Dev C: object with companion
-object CancelOrder {
-    suspend fun execute(request: CancelRequest, repo: OrderRepository): HttpResult { ... }
-}
-```
-
-**Fix:** agree on slice anatomy as a team convention:
-
-```
-Team convention:
-1. Handler = curried top-level function (PascalCase)
-2. Pure logic = regular function (camelCase)
-3. Decisions = sealed interface
-4. One file per slice (unless > 120 lines)
-5. Naming: [Verb][Noun] — PlaceOrder, GetCustomer, CancelSubscription
-```
-
-### 7. Semantic Diffusion — "VSA" That Isn't VSA
-
-**Symptom:** team says "we do vertical slices" but still has shared services, controller classes, repository interfaces with implementations.
-
-**Checklist — is it really VSA?**
-
-| Check | VSA ✅ | Not VSA ❌ |
-|---|---|---|
-| Code grouped by | Feature / use case | Technical layer |
-| Handler is | Top-level function | Method in controller class |
-| Business logic | Pure function in same file | Service class in separate layer |
-| DB access | Direct in handler (edge) | Through repository interface + impl |
-| New feature means | New folder + file | Changes in 3+ existing files |
-| Slices depend on | `common/` only | Each other / shared services |
+**Fix:** Handler must be a trivial 3-line composition. Move all logic to `decide()`.
 
 ---
 
@@ -175,30 +133,37 @@ Run through these checks when reviewing any PR:
 
 ### Slice Independence
 - [ ] Slice does not import from another slice
-- [ ] Slice only imports from `common/` and standard library
-- [ ] New feature = new file(s), not modifications to existing slices
+- [ ] Slice only imports from `common/` and its own feature group's shared files (e.g., `OrderError.kt`)
+- [ ] New feature = new slice folder, not modifications to existing slices
 
-### Sandwich Structure (for command slices)
-- [ ] Pure logic is `fun` (not `suspend fun`)
-- [ ] Pure logic has no repository/service calls inside
-- [ ] Handler follows Recawr: reads upfront → pure decide → writes at end
-- [ ] Decision modeled as sealed class/interface (if branching)
+### 3-Phase Structure (for command slices)
+- [ ] Domain.kt: pure logic is `fun` (not `suspend fun`)
+- [ ] Domain.kt: pure logic has no IO calls inside
+- [ ] Handler: trivial 3-line composition — gather → decide → produce
+- [ ] GatherInput: collects all data, returns Input data class
+- [ ] ProduceOutput: persists + maps errors via `orderError()`, NO business logic
+- [ ] Decision modeled as sealed interface
 
 ### common/ Health
-- [ ] No new `suspend` functions in `common/` (except `infra/`)
+- [ ] No new `suspend` functions in `common/domain/`
 - [ ] No new classes with constructor-injected dependencies
 - [ ] No new files that import from a specific slice
 - [ ] Shared code is genuinely used by 2+ slices (not pre-emptive extraction)
 
+### Route Pattern
+- [ ] Two route overloads: wiring (composition root) + HTTP protocol
+- [ ] Wiring connects real deps (db, clock, uuid) to phase lambdas
+- [ ] HTTP route knows nothing about business logic
+
 ### Consistency
-- [ ] Handler follows team convention (curried function, naming)
-- [ ] File structure matches project standard
+- [ ] Files follow naming convention (Domain.kt, Handler, GatherInput, ProduceOutput)
+- [ ] Error codes added to `OrderErrorCode` enum
 - [ ] Tests exist for pure logic (no mocks needed)
 
 ### Size
-- [ ] Slice file < 150 lines
-- [ ] Handler function < 80 lines
-- [ ] If bigger → should pure logic be extracted? Should slice be split?
+- [ ] Domain.kt < 80 lines
+- [ ] Each file < 50 lines (except Domain.kt)
+- [ ] If bigger → should pure logic move to `common/domain/`?
 
 ---
 
@@ -207,17 +172,6 @@ Run through these checks when reviewing any PR:
 | Timeframe | Healthy | Unhealthy |
 |---|---|---|
 | Month 1-3 | Slices small, some duplication OK | Premature extraction into common/ |
-| Month 3-6 | Patterns emerge, extract to common/ | common/ growing services |
+| Month 3-6 | Patterns emerge, extract to common/domain/ | common/ growing services |
 | Month 6-12 | Stable common/, slices independent | Slices calling each other |
 | Month 12+ | Feature groups → modules | common/ is 40%+ of codebase |
-
-## Team Readiness Checklist
-
-VSA requires a team that can:
-
-- [ ] Recognize code smells (Long Method, Feature Envy, Duplicate Code)
-- [ ] Practice refactoring (Extract Method, Extract Function, Move to common/)
-- [ ] Distinguish pure from impure code
-- [ ] Resist premature abstraction ("I might need this later")
-- [ ] Tolerate short-term duplication for long-term independence
-- [ ] Do code reviews that check architectural boundaries

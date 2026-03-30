@@ -1,8 +1,8 @@
 # Refactoring to Impureim Sandwich
 
-Step-by-step: from OOP class with DI to functional sandwich.
+Step-by-step: from OOP class with DI to 3-phase sandwich.
 
-## The 4-Step Evolution
+## The 5-Step Evolution
 
 ### Step 1: Classic OOP with DI (starting point)
 
@@ -21,51 +21,96 @@ class OrderService(
 }
 ```
 
-**Problem:** `placeOrder` looks like business logic but is impure — depends on repositories.
+**Problem:** `placeOrder` mixes business logic with IO — untestable without mocks.
 
 ### Step 2: Extract pure decision function
 
-Identify the business logic that doesn't need IO:
+Identify the business logic that doesn't need IO. Create an Input data class and sealed Decision:
 
 ```kotlin
-// 🟢 Pure: takes data, returns decision
-fun buildOrder(
-    stock: Map<ProductId, Int>,
-    request: PlaceOrderRequest
-): OrderDecision {
-    val outOfStock = request.items.filter { (stock[it.productId] ?: 0) < it.quantity }
-    return if (outOfStock.isNotEmpty())
-        OutOfStock(outOfStock.map { it.productId })
-    else
-        Fulfillable(Order(request.items, calculateTotal(request)))
+data class CreateOrderInput(
+    val items: List<OrderItemRequest>,
+    val stock: Map<ProductId, Int>,
+    val prices: Map<ProductId, BigDecimal>
+)
+
+sealed interface CreateOrderDecision {
+    data class Fulfillable(val order: Order) : CreateOrderDecision
+    data class OutOfStock(val missing: List<ProductId>) : CreateOrderDecision
+}
+
+// 🟢 Pure: takes data, returns decision — NO suspend, NO repo
+fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
+    val missing = input.items.filter { (input.stock[it.productId] ?: 0) < it.quantity }
+    if (missing.isNotEmpty()) return OutOfStock(missing.map { it.productId })
+    return Fulfillable(Order(input.items, calculateTotal(input)))
 }
 ```
 
-### Step 3: Model the decision as sealed class
+### Step 3: Extract GatherInput (READ phase)
+
+Move all IO reads into a factory function that returns the Input:
 
 ```kotlin
-sealed interface OrderDecision {
-    data class Fulfillable(val order: Order) : OrderDecision
-    data class OutOfStock(val missing: List<ProductId>) : OrderDecision
+fun GatherCreateOrderInput(
+    readStock: (List<ProductId>) -> Map<ProductId, Int>,
+    readPrices: (List<ProductId>) -> Map<ProductId, BigDecimal>
+): (CreateOrderRequest) -> CreateOrderInput = { request ->
+    val productIds = request.items.map { it.productId }
+    CreateOrderInput(
+        items = request.items,
+        stock = readStock(productIds),
+        prices = readPrices(productIds)
+    )
 }
 ```
 
-### Step 4: Compose the sandwich on the edge
+### Step 4: Extract ProduceOutput (WRITE phase)
+
+Move persistence + error mapping into a separate function:
 
 ```kotlin
-suspend fun placeOrder(request: PlaceOrderRequest): HttpResult {
-    // 🔴 read
-    val stock = inventoryRepo.checkStock(request.productIds())
-
-    // 🟢 decide (pure — no repo, no suspend)
-    val decision = buildOrder(stock, request)
-
-    // 🔴 write
-    return when (decision) {
-        is Fulfillable -> HttpResult.Created(orderRepo.create(decision.order))
-        is OutOfStock -> HttpResult.Conflict(decision.missing)
+fun ProduceCreateOrderOutput(
+    storeOrder: (Order) -> Unit
+): suspend (CreateOrderDecision) -> CreateOrderResponse = { decision ->
+    when (decision) {
+        is Fulfillable -> {
+            storeOrder(decision.order)
+            CreateOrderResponse(orderId = decision.order.id)
+        }
+        is OutOfStock ->
+            orderError(OUT_OF_STOCK, "Missing: ${decision.missing}")
     }
 }
+```
+
+### Step 5: Compose the Handler + wire in Route
+
+```kotlin
+// Handler — trivial 3-line composition
+fun CreateOrderHandler(
+    gatherInput: (CreateOrderRequest) -> CreateOrderInput,
+    decide: (CreateOrderInput) -> CreateOrderDecision,
+    produceOutput: suspend (CreateOrderDecision) -> CreateOrderResponse
+): suspend (CreateOrderRequest) -> CreateOrderResponse = { request ->
+    val input = gatherInput(request)
+    val decision = decide(input)
+    produceOutput(decision)
+}
+
+// Route — composition root, wires real deps
+fun Route.createOrderRoute(db: Db) = createOrderRoute(
+    CreateOrderHandler(
+        gatherInput = GatherCreateOrderInput(
+            readStock = { ids -> db.stock.filterKeys { it in ids } },
+            readPrices = { ids -> db.prices.filterKeys { it in ids } }
+        ),
+        decide = ::buildOrder,
+        produceOutput = ProduceCreateOrderOutput(
+            storeOrder = { order -> db.orders[order.id] = order }
+        )
+    )
+)
 ```
 
 ## Refactoring Checklist
@@ -73,44 +118,28 @@ suspend fun placeOrder(request: PlaceOrderRequest): HttpResult {
 For each method in a service class:
 
 1. **List all IO calls** — find every `suspend`, repo call, HTTP call, time/random
-2. **Group reads vs writes** — which IO gathers data, which IO produces effects
-3. **Extract the logic between** — everything that transforms data without IO → pure function
-4. **Model output as sealed class** — if the logic has branches, each branch = sealed subtype
-5. **Move IO to the edges** — reads before pure, writes after pure
-6. **Remove the class** — if the service has no state, replace with a top-level function or curried factory
+2. **Create Input data class** — everything the logic needs, as plain data
+3. **Create Decision sealed interface** — each branch = sealed subtype
+4. **Extract pure function** — `fun decide(input): Decision` — no IO, no suspend
+5. **Extract GatherInput** — factory that collects data into Input, deps as lambdas
+6. **Extract ProduceOutput** — factory that persists + maps errors, deps as lambdas
+7. **Create Handler** — trivial 3-line composition of the phases
+8. **Wire in Route** — connect real deps (db, clock, uuid) to lambda params
+9. **Delete the service class** — it's been replaced by the phase functions
 
 ## Sealed Class Extraction
 
 ### When to use sealed class for decisions
 
-Use when the pure function has **branching outcomes** that require **different write actions**:
+Use when the pure function has **branching outcomes** that require **different actions**:
 
 ```kotlin
-sealed class DiscountDecision {
-    data class ApplyDiscount(val rate: BigDecimal, val reason: String) : DiscountDecision()
-    data object NoDiscount : DiscountDecision()
+sealed interface SetDeliveryDecision {
+    data class DeliverySet(val order: Order) : SetDeliveryDecision
+    data object NotFound : SetDeliveryDecision
+    data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
+    data class BlankAddress(val message: String) : SetDeliveryDecision
 }
-
-// 🟢 Pure
-fun decideDiscount(order: Order, history: CustomerHistory): DiscountDecision {
-    if (history.totalOrders >= 50) return ApplyDiscount("0.15".toBigDecimal(), "loyalty_gold")
-    if (history.totalOrders >= 10) return ApplyDiscount("0.05".toBigDecimal(), "loyalty_silver")
-    if (order.total > "500".toBigDecimal()) return ApplyDiscount("0.10".toBigDecimal(), "large_order")
-    return NoDiscount
-}
-```
-
-### When sealed class is overkill
-
-If the pure function returns a single value that is either used or not — use nullable or Result:
-
-```kotlin
-// Simple: nullable is enough
-fun parseDate(raw: String): LocalDate? =
-    runCatching { LocalDate.parse(raw) }.getOrNull()
-
-// Simple: Result is enough
-fun validateOrder(dto: PlaceOrderDto): Result<ValidatedOrder> = ...
 ```
 
 ### Three tools for modeling decisions
@@ -121,47 +150,39 @@ fun validateOrder(dto: PlaceOrderDto): Result<ValidatedOrder> = ...
 | `Result<T>` | Success/failure binary |
 | `T?` (nullable) | Value present or absent |
 
-## Currying: Right vs Wrong
+For command slices, sealed interface is almost always the right choice —
+it makes all branches explicit in the `when` of ProduceOutput.
 
-### ❌ Wrong: curry hides impurity
+## Lambda Injection vs Constructor DI
 
+### ❌ Old: constructor injection (class-based)
 ```kotlin
-fun PlaceOrder(
-    inventoryRepo: InventoryRepository,
-    orderRepo: OrderRepository
-): suspend (PlaceOrderRequest) -> OrderId? = { request ->
-    val stock = inventoryRepo.checkStock(request.productIds())  // impure inside!
-    // logic mixed with IO
-    orderRepo.create(order)  // impure inside!
-}
+class OrderService(
+    private val orderRepo: OrderRepository,    // interface + impl
+    private val inventoryRepo: InventoryRepository
+) { ... }
 ```
 
-Currying ≡ Constructor Injection. The function is still impure.
-
-### ✅ Right: curry as composition root with sandwich inside
-
+### ✅ New: lambda injection (function-based)
 ```kotlin
-fun PlaceOrder(
-    inventoryRepo: InventoryRepository,
-    orderRepo: OrderRepository
-): suspend (PlaceOrderRequest) -> HttpResult = { request ->
-    val stock = inventoryRepo.checkStock(request.productIds())  // 🔴 read
-    val decision = buildOrder(stock, request)                    // 🟢 pure (NO repo!)
-    when (decision) {                                            // 🔴 write
-        is Fulfillable -> HttpResult.Created(orderRepo.create(decision.order))
-        is OutOfStock -> HttpResult.Conflict(decision.missing)
-    }
-}
+fun GatherCreateOrderInput(
+    readMenu: () -> Map<String, MenuItem>,     // plain lambda
+    readExtras: () -> Map<String, ExtraItem>,
+    generateId: () -> String,
+    now: () -> Instant
+): (CreateOrderRequest) -> CreateOrderInput = { ... }
 ```
 
-The key difference: `buildOrder` does NOT call any repository. It receives data as arguments.
+**Key difference:** lambdas are wired at the route level with real implementations.
+No interfaces, no implementations, no DI container.
 
 ## Common Refactoring Traps
 
 | Trap | Fix |
 |------|-----|
-| "I need DB result to decide what to read next" | Read both upfront, let pure function decide which to use |
-| "I need to write intermediate results" | Collect all decisions first, write in batch at the end |
-| "My pure function needs the current time" | Pass `now` as argument from edge |
-| "I log inside business logic for debugging" | Return structured data, log on edge |
-| "I need to call an external API mid-logic" | Read API result upfront, pass as argument |
+| "I need DB result to decide what to read next" | Read both upfront in GatherInput, let decide() choose which to use |
+| "I need to write intermediate results" | Collect all decisions first, write in batch in ProduceOutput |
+| "My pure function needs the current time" | Pass `now` as field in Input, generate in GatherInput |
+| "I log inside business logic for debugging" | Return structured Decision, log in ProduceOutput or route |
+| "I need to call an external API mid-logic" | Read API result in GatherInput, pass as field in Input |
+| "ProduceOutput has business logic" | Move it to decide(). ProduceOutput should only persist + map errors |

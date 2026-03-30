@@ -10,73 +10,138 @@ Three levels of the pattern, from ideal to realistic.
 🔴 Impure — write result
 ```
 
-```kotlin
-suspend fun placeOrder(request: PlaceOrderRequest): HttpResult {
-    // 🔴 read
-    val inventory = inventoryRepo.getStock(request.items.map { it.productId })
-
-    // 🟢 decide
-    val decision = fulfillOrder(inventory, request)
-
-    // 🔴 write
-    return when (decision) {
-        is Fulfillable -> {
-            orderRepo.create(decision.order)
-            HttpResult.Created(decision.order.id)
-        }
-        is OutOfStock -> HttpResult.Conflict("Out of stock: ${decision.missing}")
-    }
-}
-```
-
 **When to use:** Simple operations with one read source and straightforward write.
 
-## 2. Realistic Sandwich (5-layer)
+## 2. 3-Phase Decomposition (default for commands)
+
+Each phase is a separate, named, testable function:
 
 ```
-🟢 Pure   — parse/validate input
-🔴 Impure — read from DB
-🟢 Pure   — business logic
-🔴 Impure — write to DB
-🟢 Pure   — translate to response
+GatherInput    →    decide    →    ProduceOutput
+  🔴 READ          🟢 PURE          🔴 WRITE
+  (collects)       (decides)        (persists + maps errors)
 ```
 
-**Why first pure layer is inevitable:** to query DB you need to know WHAT to query. Parsing the request is pure. If JSON is malformed, you can't even query.
+### File structure per slice
 
-**Why last pure layer is inevitable:** building HTTP response from a decision is a pure transformation.
+```
+setDelivery/
+├── SetDelivery.kt              ← HTTP DTOs + route (wiring)
+├── Domain.kt                   ← Input type + Decision sealed interface + pure logic
+├── SetDeliveryHandler.kt       ← Orchestrator (3-line composition)
+├── GatherSetDeliveryInput.kt   ← READ phase
+└── ProduceSetDeliveryOutput.kt ← WRITE phase
+```
+
+### Domain.kt — pure types + logic
 
 ```kotlin
-suspend fun placeOrder(dto: PlaceOrderDto): HttpResult {
-    // 🟢 parse (pure — before any IO)
-    val shippingDate = parseDate(dto.requestedDelivery)
-        ?: return HttpResult.BadRequest("Invalid date")
-    val items = dto.items.map { parseOrderItem(it) ?: return HttpResult.BadRequest("Invalid item") }
-    if (items.isEmpty()) return HttpResult.BadRequest("Order must have items")
+// ── Input (assembled by GatherInput) ──
+data class SetDeliveryInput(
+    val order: Order?,
+    val address: String,
+    val phone: String,
+    val deliveryTime: String?
+)
 
-    // 🔴 read (now we know WHAT to query)
-    val stock = inventoryRepo.checkStock(items.map { it.productId })
-    val pricing = pricingRepo.getCurrentPrices(items.map { it.productId })
+// ── Decision (sealed — each branch = different outcome) ──
+sealed interface SetDeliveryDecision {
+    data class DeliverySet(val order: Order) : SetDeliveryDecision
+    data object NotFound : SetDeliveryDecision
+    data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
+    data class BlankAddress(val message: String = "Вкажіть адресу") : SetDeliveryDecision
+}
 
-    // 🟢 decide (pure)
-    val decision = buildOrder(items, stock, pricing, shippingDate)
+// ── Pure logic (NOT suspend) ──
+fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
+    val order = input.order ?: return SetDeliveryDecision.NotFound
+    if (order.status != OrderStatus.DRAFT) return SetDeliveryDecision.WrongStatus(order.status)
+    if (input.address.isBlank()) return SetDeliveryDecision.BlankAddress()
 
-    // 🔴 write
-    return when (decision) {
-        is Fulfillable -> {
-            val id = orderRepo.create(decision.order)
-            HttpResult.Created(id)           // 🟢 translate
+    val deliveryFee = calculateDeliveryFee(order.subtotal)
+    return SetDeliveryDecision.DeliverySet(
+        order.copy(status = OrderStatus.AWAITING_PAYMENT, deliveryFee = deliveryFee)
+    )
+}
+```
+
+### Handler — trivial orchestrator
+
+```kotlin
+fun SetDeliveryHandler(
+    gatherInput: (String, SetDeliveryRequest) -> SetDeliveryInput,
+    decide: (SetDeliveryInput) -> SetDeliveryDecision,
+    produceOutput: suspend (SetDeliveryDecision) -> SetDeliveryResponse
+): suspend (String, SetDeliveryRequest) -> SetDeliveryResponse = { orderId, request ->
+    val input = gatherInput(orderId, request)
+    val decision = decide(input)
+    produceOutput(decision)
+}
+```
+
+### GatherInput — READ phase
+
+```kotlin
+fun GatherSetDeliveryInput(
+    readOrder: (String) -> Order?
+): (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
+    SetDeliveryInput(
+        order = readOrder(orderId),
+        address = request.address,
+        phone = request.phone,
+        deliveryTime = request.deliveryTime
+    )
+}
+```
+
+### ProduceOutput — WRITE phase + error mapping
+
+```kotlin
+fun ProduceSetDeliveryOutput(
+    storeOrder: (Order) -> Unit
+): suspend (SetDeliveryDecision) -> SetDeliveryResponse = { decision ->
+    when (decision) {
+        is SetDeliveryDecision.DeliverySet -> {
+            storeOrder(decision.order)
+            SetDeliveryResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is OutOfStock ->
-            HttpResult.Conflict(decision.message)  // 🟢 translate
+        is SetDeliveryDecision.NotFound ->
+            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+        is SetDeliveryDecision.WrongStatus ->
+            orderError(WRONG_STATUS, "Очікується DRAFT, поточний: ${decision.current}")
+        is SetDeliveryDecision.BlankAddress ->
+            orderError(BLANK_ADDRESS, decision.message)
     }
 }
 ```
 
-**Rules:**
-- ✅ Add more pure layers — always safe
-- ❌ Add more impure layers — Dagwood sandwich, redesign
+### Route — wiring (composition root)
 
-**When to use:** Most real-world endpoints. This is the default.
+```kotlin
+// Wiring: connects real deps to phases
+fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
+    SetDeliveryHandler(
+        gatherInput = GatherSetDeliveryInput(
+            readOrder = { id -> db.orders[id] }
+        ),
+        decide = ::decideDelivery,
+        produceOutput = ProduceSetDeliveryOutput(
+            storeOrder = { order -> db.orders[order.id] = order }
+        )
+    )
+)
+
+// HTTP protocol: receives request, calls handler, responds
+fun Route.setDeliveryRoute(handler: suspend (String, SetDeliveryRequest) -> SetDeliveryResponse) {
+    post("/orders/{id}/delivery") {
+        val id = call.parameters["id"]!!
+        val request = call.receive<SetDeliveryRequest>()
+        call.respond(HttpStatusCode.OK, handler(id, request))
+    }
+}
+```
+
+**When to use:** All command slices. This is the default.
 
 ## 3. Recawr Sandwich (Read → Calculate → Write)
 
@@ -84,55 +149,28 @@ A specialization with a stricter constraint:
 
 > Once you start WRITING, you must NOT go back to READING new data.
 
+The 3-Phase Decomposition naturally enforces Recawr because GatherInput runs
+completely before ProduceOutput.
+
 ```
 ┌──────────────────────────────────────┐
 │  Impureim Sandwiches (general)       │
 │  ┌────────────────────────────────┐  │
-│  │  Recawr Sandwiches (stricter) │  │
+│  │  3-Phase Decomposition        │  │
+│  │  ┌──────────────────────────┐ │  │
+│  │  │  Recawr (strictest)      │ │  │
+│  │  └──────────────────────────┘ │  │
 │  └────────────────────────────────┘  │
 └──────────────────────────────────────┘
 ```
-
-```kotlin
-suspend fun placeOrder(request: PlaceOrderRequest): OrderResult {
-    // 🔴 READ — all reads upfront
-    val stock = inventoryRepo.checkStock(request.productIds())
-    val prices = pricingRepo.getCurrentPrices(request.productIds())
-    val customer = customerRepo.findById(request.customerId)
-
-    // 🟢 CALCULATE — all logic in one pure function
-    val decision = buildOrder(
-        items = request.items,
-        stock = stock,
-        prices = prices,
-        loyaltyTier = customer.loyaltyTier,
-        shippingZone = customer.shippingZone
-    )
-
-    // 🔴 WRITE — execute the decision
-    return when (decision) {
-        is Fulfillable -> {
-            val orderId = orderRepo.create(decision.order)
-            inventoryRepo.reserve(decision.reservations)
-            paymentService.charge(customer.paymentMethod, decision.order.total)
-            OrderResult.Created(orderId)
-        }
-        is OutOfStock -> OrderResult.Rejected(decision.missing)
-        is PriceChanged -> OrderResult.PriceChanged(decision.newPrices)
-    }
-}
-```
-
-**When to use:** Most well-designed sandwiches are Recawr. Use as default pattern. If you need to interleave reads and writes, consider if you can restructure to read everything upfront.
 
 ## Choosing a Pattern
 
 ```
 Can I gather all data before logic?
-├── YES → Recawr (Read → Calculate → Write)
-├── MOSTLY → 5-layer (parse → read → decide → write → translate)
-└── NO, I need cascading IO → Consider splitting into multiple sandwiches
-    or using a saga/workflow pattern
+├── YES → 3-Phase Decomposition (GatherInput → decide → ProduceOutput)
+├── Need cascading IO? → Consider splitting into multiple sandwiches
+└── Simple query, no logic? → Skip sandwich, direct read (query slice)
 ```
 
 ## Pure Function Template
@@ -140,22 +178,27 @@ Can I gather all data before logic?
 Every pure function in the sandwich follows this shape:
 
 ```kotlin
-// NOT suspend. Takes data. Returns sealed decision.
-fun decide(
-    readData: ReadData,
-    request: ValidatedRequest
-): Decision {
+// NOT suspend. Takes Input data class. Returns sealed Decision.
+fun decide(input: SomeInput): SomeDecision {
     // all logic here — no IO, no suspend, no side effects
     return when {
-        condition1 -> Decision.OptionA(...)
-        condition2 -> Decision.OptionB(...)
-        else -> Decision.OptionC(...)
+        condition1 -> SomeDecision.OptionA(...)
+        condition2 -> SomeDecision.OptionB(...)
+        else -> SomeDecision.OptionC(...)
     }
 }
 
-sealed interface Decision {
-    data class OptionA(...) : Decision
-    data class OptionB(...) : Decision
-    data class OptionC(...) : Decision
+// Input = everything the pure function needs
+data class SomeInput(
+    val existingData: ExistingData?,    // from DB (nullable = might not exist)
+    val requestData: String,             // from HTTP request
+    val now: Instant                     // from clock (passed in, not called)
+)
+
+// Decision = all possible outcomes
+sealed interface SomeDecision {
+    data class Success(val result: DomainObject) : SomeDecision
+    data class ValidationError(val message: String) : SomeDecision
+    data object NotFound : SomeDecision
 }
 ```
