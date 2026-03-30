@@ -9,8 +9,7 @@ import com.sandwich.features.orders.dispatchOrder.DispatchOrder
 import com.sandwich.features.orders.getOrder.GetOrder
 import com.sandwich.features.orders.payOrder.PayOrder
 import com.sandwich.features.orders.payOrder.PayOrderRequest
-import com.sandwich.features.orders.setDelivery.SetDelivery
-import com.sandwich.features.orders.setDelivery.SetDeliveryRequest
+import com.sandwich.features.orders.setDelivery.setDeliveryRoute
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.request.*
@@ -20,7 +19,6 @@ import io.ktor.server.routing.*
 fun Application.configureRouting(db: Db) {
     val getMenu = GetMenu(db)
     val getOrder = GetOrder(db)
-    val setDelivery = SetDelivery(db)
     val payOrder = PayOrder(db)
     val dispatchOrder = DispatchOrder(db)
     val completeDelivery = CompleteDelivery(db)
@@ -44,11 +42,7 @@ fun Application.configureRouting(db: Db) {
             else call.respond(HttpStatusCode.NotFound, mapOf("error" to "Замовлення не знайдено"))
         }
 
-        post("/orders/{id}/delivery") {
-            val id = call.parameters["id"]!!
-            val request = call.receive<SetDeliveryRequest>()
-            call.respond(setDelivery(id, request))
-        }
+        setDeliveryRoute(db)
 
         post("/orders/{id}/pay") {
             val id = call.parameters["id"]!!
