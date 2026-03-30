@@ -1,6 +1,6 @@
 # End-to-End Examples
 
-Complete sandwich implementations from the Sandwich project.
+Complete sandwich implementations showing the pattern at different complexity levels.
 
 ## 1. CreateOrder (full command slice)
 
@@ -11,31 +11,28 @@ data class CreateOrderInput(
     val orderId: String,
     val customerName: String,
     val items: List<OrderItemRequest>,
-    val menu: Map<String, MenuItem>,
-    val extras: Map<String, ExtraItem>,
+    val catalog: Map<String, Product>,
     val now: Instant
 )
 
 sealed interface CreateOrderDecision {
     data class Created(val order: Order) : CreateOrderDecision
-    data class EmptyOrder(val message: String = "Замовлення не може бути порожнім") : CreateOrderDecision
-    data class BlankName(val message: String = "Вкажіть ім'я") : CreateOrderDecision
-    data class UnknownSandwich(val ids: List<String>) : CreateOrderDecision
-    data class UnknownExtras(val ids: List<String>) : CreateOrderDecision
+    data class EmptyOrder(val message: String = "Order must have items") : CreateOrderDecision
+    data class BlankName(val message: String = "Customer name is required") : CreateOrderDecision
+    data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
 fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
     if (input.customerName.isBlank()) return CreateOrderDecision.BlankName()
     if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder()
 
-    val unknownSandwiches = input.items.map { it.sandwichId }.filter { it !in input.menu }
-    if (unknownSandwiches.isNotEmpty()) return CreateOrderDecision.UnknownSandwich(unknownSandwiches)
+    val unknownIds = input.items.map { it.productId }.filter { it !in input.catalog }
+    if (unknownIds.isNotEmpty()) return CreateOrderDecision.UnknownProducts(unknownIds)
 
     val lines = input.items.map { item ->
-        val sandwich = input.menu.getValue(item.sandwichId)
-        val itemExtras = item.extras.map { input.extras.getValue(it) }
-        val lineTotal = calculateLineTotal(sandwich.price, itemExtras.map { it.price })
-        OrderLine(sandwichId = sandwich.id, extras = itemExtras, lineTotal = lineTotal)
+        val product = input.catalog.getValue(item.productId)
+        val lineTotal = calculateLineTotal(product.price, item.quantity)
+        OrderLine(productId = product.id, quantity = item.quantity, lineTotal = lineTotal)
     }
 
     val subtotal = lines.sumOf { it.lineTotal }
@@ -52,8 +49,7 @@ fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
 
 ```kotlin
 fun GatherCreateOrderInput(
-    readMenu: () -> Map<String, MenuItem>,
-    readExtras: () -> Map<String, ExtraItem>,
+    readCatalog: () -> Map<String, Product>,
     generateId: () -> String,
     now: () -> Instant
 ): (CreateOrderRequest) -> CreateOrderInput = { request ->
@@ -61,8 +57,7 @@ fun GatherCreateOrderInput(
         orderId = generateId(),
         customerName = request.customerName,
         items = request.items,
-        menu = readMenu(),
-        extras = readExtras(),
+        catalog = readCatalog(),
         now = now()
     )
 }
@@ -93,10 +88,9 @@ fun ProduceCreateOrderOutput(
             storeOrder(decision.order)
             CreateOrderResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is CreateOrderDecision.BlankName -> orderError(BLANK_NAME, decision.message)
-        is CreateOrderDecision.EmptyOrder -> orderError(EMPTY_ORDER, decision.message)
-        is CreateOrderDecision.UnknownSandwich -> orderError(UNKNOWN_SANDWICH, "Невідомі: ${decision.ids}")
-        is CreateOrderDecision.UnknownExtras -> orderError(UNKNOWN_EXTRAS, "Невідомі: ${decision.ids}")
+        is CreateOrderDecision.BlankName -> domainError(BLANK_NAME, decision.message)
+        is CreateOrderDecision.EmptyOrder -> domainError(EMPTY_ORDER, decision.message)
+        is CreateOrderDecision.UnknownProducts -> domainError(UNKNOWN_PRODUCT, "Unknown: ${decision.ids}")
     }
 }
 ```
@@ -107,8 +101,7 @@ fun ProduceCreateOrderOutput(
 fun Route.createOrderRoute(db: Db) = createOrderRoute(
     CreateOrderHandler(
         gatherInput = GatherCreateOrderInput(
-            readMenu = { db.sandwiches.toMap() },
-            readExtras = { db.extras.toMap() },
+            readCatalog = { db.products.toMap() },
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
@@ -140,8 +133,8 @@ fun `blank name is rejected`() {
 @Test
 fun `valid order is created with discount`() {
     val input = createOrderInput(
-        items = listOf(item("s1"), item("s2"), item("s3")),
-        menu = mapOf("s1" to menuItem(100), "s2" to menuItem(150), "s3" to menuItem(200))
+        items = listOf(item("p1"), item("p2"), item("p3")),
+        catalog = mapOf("p1" to product(100), "p2" to product(150), "p3" to product(200))
     )
     val decision = buildOrder(input)
     assertIs<CreateOrderDecision.Created>(decision)
@@ -154,7 +147,7 @@ No mocks. No runTest. No coroutines. Just data in → decision out.
 
 ---
 
-## 2. CancelOrder (with time-based logic)
+## 2. CancelOrder (with status-based logic)
 
 ### Domain.kt
 
@@ -165,7 +158,7 @@ data class CancelOrderInput(
 )
 
 sealed interface CancelOrderDecision {
-    data class Cancelled(val order: Order, val refund: Boolean, val releasedStock: Map<String, Int>) : CancelOrderDecision
+    data class Cancelled(val order: Order, val refund: Boolean) : CancelOrderDecision
     data object NotFound : CancelOrderDecision
     data class WrongStatus(val current: OrderStatus) : CancelOrderDecision
     data class TooLate(val message: String) : CancelOrderDecision
@@ -180,8 +173,7 @@ fun decideCancellation(input: CancelOrderInput): CancelOrderDecision {
 
     return CancelOrderDecision.Cancelled(
         order = order.copy(status = OrderStatus.CANCELLED),
-        refund = refund,
-        releasedStock = order.items.associate { it.sandwichId to 1 }
+        refund = refund
     )
 }
 ```
@@ -196,7 +188,7 @@ fun decideCancellation(input: CancelOrderInput): CancelOrderDecision {
 fun Route.getOrderRoute(db: Db) {
     get("/orders/{id}") {
         val id = call.parameters["id"]!!
-        val order = db.orders[id] ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+        val order = db.orders[id] ?: domainError(ORDER_NOT_FOUND, "Order not found")
         call.respond(HttpStatusCode.OK, order.toResponse())
     }
 }
@@ -225,9 +217,9 @@ Query slices don't need the 3-phase decomposition — they're simple reads.
 │  │  Pure Core (Domain.kt)                           │   │
 │  │                                                  │   │
 │  │  buildOrder(input) → CreateOrderDecision          │   │
-│  │  decideDelivery(input) → SetDeliveryDecision      │   │
+│  │  decideShipping(input) → AssignShippingDecision   │   │
 │  │  decideCancellation(input) → CancelOrderDecision  │   │
-│  │  calculateDeliveryFee(subtotal) → Int             │   │
+│  │  calculateShippingFee(subtotal) → Int             │   │
 │  │  calculateDiscount(count, subtotal) → Int         │   │
 │  └──────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────┘
@@ -236,6 +228,6 @@ Query slices don't need the 3-phase decomposition — they're simple reads.
 **Hexagonal test:** can I test `buildOrder` without DB, without HTTP, without mocks?
 
 ```kotlin
-val input = CreateOrderInput(items = listOf(...), menu = mapOf(...))
+val input = CreateOrderInput(items = listOf(...), catalog = mapOf(...))
 val decision = buildOrder(input)  // works — pure data in, decision out
 ```

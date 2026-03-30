@@ -50,14 +50,14 @@ GatherInput  →  decide  →  ProduceOutput
 Collects everything the pure function needs. Returns a plain data object.
 
 ```kotlin
-fun GatherSetDeliveryInput(
+fun GatherAssignShippingInput(
     readOrder: (String) -> Order?
-): (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
-    SetDeliveryInput(
+): (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
+    AssignShippingInput(
         order = readOrder(orderId),
         address = request.address,
         phone = request.phone,
-        deliveryTime = request.deliveryTime
+        deliveryDate = request.deliveryDate
     )
 }
 ```
@@ -67,17 +67,17 @@ fun GatherSetDeliveryInput(
 Pure function. No `suspend`. Takes data, returns sealed decision.
 
 ```kotlin
-fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
+fun decideShipping(input: AssignShippingInput): AssignShippingDecision {
     val order = input.order
-        ?: return SetDeliveryDecision.NotFound
+        ?: return AssignShippingDecision.NotFound
     if (order.status != OrderStatus.DRAFT)
-        return SetDeliveryDecision.WrongStatus(order.status)
+        return AssignShippingDecision.WrongStatus(order.status)
     if (input.address.isBlank())
-        return SetDeliveryDecision.BlankAddress()
+        return AssignShippingDecision.BlankAddress
 
-    val deliveryFee = calculateDeliveryFee(order.subtotal)
-    return SetDeliveryDecision.DeliverySet(
-        order.copy(status = OrderStatus.AWAITING_PAYMENT, deliveryFee = deliveryFee)
+    val shippingFee = calculateShippingFee(order.subtotal)
+    return AssignShippingDecision.ShippingAssigned(
+        order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
     )
 }
 ```
@@ -87,18 +87,20 @@ fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
 Persists the decision + maps errors to typed exceptions.
 
 ```kotlin
-fun ProduceSetDeliveryOutput(
+fun ProduceAssignShippingOutput(
     storeOrder: (Order) -> Unit
-): suspend (SetDeliveryDecision) -> SetDeliveryResponse = { decision ->
+): suspend (AssignShippingDecision) -> AssignShippingResponse = { decision ->
     when (decision) {
-        is SetDeliveryDecision.DeliverySet -> {
+        is AssignShippingDecision.ShippingAssigned -> {
             storeOrder(decision.order)
-            SetDeliveryResponse(orderId = decision.order.id, total = decision.order.total)
+            AssignShippingResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is SetDeliveryDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
-        is SetDeliveryDecision.WrongStatus ->
-            orderError(WRONG_STATUS, "Очікується DRAFT, поточний: ${decision.current}")
+        is AssignShippingDecision.NotFound ->
+            domainError(ORDER_NOT_FOUND, "Order not found")
+        is AssignShippingDecision.WrongStatus ->
+            domainError(WRONG_STATUS, "Expected DRAFT, got: ${decision.current}")
+        is AssignShippingDecision.BlankAddress ->
+            domainError(BLANK_ADDRESS, "Address is required")
     }
 }
 ```
@@ -108,11 +110,11 @@ fun ProduceSetDeliveryOutput(
 Composes the three phases. The handler itself is trivial — just sequencing.
 
 ```kotlin
-fun SetDeliveryHandler(
-    gatherInput: (String, SetDeliveryRequest) -> SetDeliveryInput,
-    decide: (SetDeliveryInput) -> SetDeliveryDecision,
-    produceOutput: suspend (SetDeliveryDecision) -> SetDeliveryResponse
-): suspend (String, SetDeliveryRequest) -> SetDeliveryResponse = { orderId, request ->
+fun AssignShippingHandler(
+    gatherInput: (String, AssignShippingRequest) -> AssignShippingInput,
+    decide: (AssignShippingInput) -> AssignShippingDecision,
+    produceOutput: suspend (AssignShippingDecision) -> AssignShippingResponse
+): suspend (String, AssignShippingRequest) -> AssignShippingResponse = { orderId, request ->
     val input = gatherInput(orderId, request)
     val decision = decide(input)
     produceOutput(decision)
@@ -124,13 +126,13 @@ fun SetDeliveryHandler(
 The route function wires real dependencies into lambdas:
 
 ```kotlin
-fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
-    SetDeliveryHandler(
-        gatherInput = GatherSetDeliveryInput(
+fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
+    AssignShippingHandler(
+        gatherInput = GatherAssignShippingInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideDelivery,
-        produceOutput = ProduceSetDeliveryOutput(
+        decide = ::decideShipping,
+        produceOutput = ProduceAssignShippingOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )
     )
@@ -142,19 +144,19 @@ fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
 Errors modeled as shared enum with HTTP status mapping. StatusPages catches and converts:
 
 ```kotlin
-enum class OrderErrorCode(val status: HttpStatusCode) {
+enum class DomainErrorCode(val status: HttpStatusCode) {
     ORDER_NOT_FOUND(HttpStatusCode.NotFound),
     WRONG_STATUS(HttpStatusCode.Conflict),
     BLANK_ADDRESS(HttpStatusCode.BadRequest),
 }
 
-data class OrderError(val code: OrderErrorCode, val message: String)
-class OrderException(val error: OrderError) : Exception(error.message)
-fun orderError(code: OrderErrorCode, message: String): Nothing =
-    throw OrderException(OrderError(code, message))
+data class DomainError(val code: DomainErrorCode, val message: String)
+class DomainException(val error: DomainError) : Exception(error.message)
+fun domainError(code: DomainErrorCode, message: String): Nothing =
+    throw DomainException(DomainError(code, message))
 ```
 
-ProduceOutput maps error decisions to `orderError()` calls — they never return, StatusPages catches.
+ProduceOutput maps error decisions to `domainError()` calls — they never return, StatusPages catches.
 
 ## Decision Tree
 
@@ -211,11 +213,11 @@ toUpdate.forEach { repo.update(it) }                 // write after
 ### ❌ Decision logic in ProduceOutput
 ```kotlin
 // WRONG: business rule inside the WRITE phase
-fun ProduceOutput(storeOrder: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
+fun ProduceOutput(store: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
     when (decision) {
         is Created -> {
             if (decision.order.total > 1000) { /* business rule here! */ }
-            storeOrder(decision.order)
+            store(decision.order)
             // ...
         }
     }
@@ -225,13 +227,13 @@ fun ProduceOutput(storeOrder: (Order) -> Unit): suspend (Decision) -> Response =
 ### ✅ All logic in decide(), ProduceOutput only persists + maps errors
 ```kotlin
 // RIGHT: ProduceOutput is dumb — store or throw
-fun ProduceOutput(storeOrder: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
+fun ProduceOutput(store: (Order) -> Unit): suspend (Decision) -> Response = { decision ->
     when (decision) {
         is Created -> {
-            storeOrder(decision.order)
+            store(decision.order)
             Response(orderId = decision.order.id)
         }
-        is Error -> orderError(ERROR_CODE, decision.message)
+        is Error -> domainError(ERROR_CODE, decision.message)
     }
 }
 ```

@@ -10,11 +10,11 @@ The hardest question in Vertical Slice Architecture: where does shared code live
 
 | Category | Example | Why OK |
 |---|---|---|
-| Pure calculations | `calculateLineTotal(price, extras): Int` | No IO, deterministic |
-| Pure pricing rules | `calculateDeliveryFee(subtotal): Int` | Business constant/logic |
-| Domain types | `Order`, `OrderStatus`, `MenuItem` | Data types |
-| Business constants | `MAX_ITEMS_PER_ORDER`, `FREE_DELIVERY_THRESHOLD` | Static data |
-| Error vocabulary | `OrderErrorCode`, `OrderException`, `orderError()` | Shared within feature group |
+| Pure calculations | `calculateLineTotal(price, quantity): Int` | No IO, deterministic |
+| Pure pricing rules | `calculateShippingFee(subtotal): Int` | Business constant/logic |
+| Domain types | `Order`, `OrderStatus`, `Product` | Data types |
+| Business constants | `MAX_ITEMS_PER_ORDER`, `FREE_SHIPPING_THRESHOLD` | Static data |
+| Error vocabulary | `DomainErrorCode`, `DomainException`, `domainError()` | Shared within feature group |
 | Infrastructure | `Db`, `HttpServer`, `ErrorHandling` | Wiring code |
 
 ## What CANNOT Go in common/
@@ -60,8 +60,8 @@ Fix: accept data, not the source of data.
 
 ```kotlin
 // ✅ common/domain/PricingRules.kt
-fun calculateLineTotal(sandwichPrice: Int, extraPrices: List<Int>): Int {
-    return sandwichPrice + extraPrices.sum()  // pure
+fun calculateLineTotal(price: Int, quantity: Int): Int {
+    return price * quantity  // pure
 }
 ```
 
@@ -76,7 +76,7 @@ Unhealthy:  common/ = 50% of code, slices = 50%  ← hidden service layer
 
 ```kotlin
 // ❌ common/helpers/OrderHelper.kt
-import com.sandwich.features.orders.createOrder.CreateOrderRequest  // importing from a slice!
+import com.example.features.orders.createOrder.CreateOrderRequest  // importing from a slice!
 ```
 
 `common/` must NEVER import from a slice. Dependencies flow one way: slice → common.
@@ -91,15 +91,16 @@ import com.sandwich.features.orders.createOrder.CreateOrderRequest  // importing
 // orders/createOrder/Domain.kt
 val total = subtotal - discount
 
-// orders/setDelivery/Domain.kt
-val total = subtotal - discount + deliveryFee  // similar but different — leave it
+// orders/assignShipping/Domain.kt
+val total = subtotal - discount + shippingFee  // similar but different — leave it
 ```
 
 ### Occurrence 3: extract to common/
 
 ```kotlin
 // common/domain/PricingRules.kt
-fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THRESHOLD) 0 else DELIVERY_FEE
+fun calculateShippingFee(subtotal: Int): Int =
+    if (subtotal >= FREE_SHIPPING_THRESHOLD) 0 else SHIPPING_FEE
 ```
 
 ### Why not extract immediately?
@@ -113,18 +114,18 @@ fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THR
 Error codes shared within a feature group — one enum per aggregate:
 
 ```kotlin
-// orders/OrderError.kt
-enum class OrderErrorCode(val status: HttpStatusCode) {
+// orders/DomainError.kt
+enum class DomainErrorCode(val status: HttpStatusCode) {
     // createOrder
     BLANK_NAME(HttpStatusCode.BadRequest),
     EMPTY_ORDER(HttpStatusCode.BadRequest),
-    UNKNOWN_SANDWICH(HttpStatusCode.BadRequest),
+    UNKNOWN_PRODUCT(HttpStatusCode.BadRequest),
 
     // shared across slices
     ORDER_NOT_FOUND(HttpStatusCode.NotFound),
     WRONG_STATUS(HttpStatusCode.Conflict),
 
-    // setDelivery
+    // assignShipping
     BLANK_ADDRESS(HttpStatusCode.BadRequest),
 
     // cancelOrder
@@ -132,8 +133,8 @@ enum class OrderErrorCode(val status: HttpStatusCode) {
 }
 ```
 
-Each slice adds its own codes. `ProduceOutput` calls `orderError(CODE, message)`.
-StatusPages catches `OrderException` → HTTP response. No manual HTTP status mapping in slices.
+Each slice adds its own codes. `ProduceOutput` calls `domainError(CODE, message)`.
+StatusPages catches `DomainException` → HTTP response. No manual HTTP status mapping in slices.
 
 ## common/ Structure
 
@@ -141,14 +142,14 @@ StatusPages catches `OrderException` → HTTP response. No manual HTTP status ma
 common/
 ├── domain/
 │   ├── PricingRules.kt        ← pure business rules (calculateLineTotal, calculateDiscount, etc.)
-│   └── Types.kt               ← shared domain types (Order, OrderLine, OrderStatus, DeliveryInfo)
+│   └── Types.kt               ← shared domain types (Order, OrderLine, OrderStatus)
 ├── http/
-│   ├── ErrorHandling.kt       ← StatusPages config (catches OrderException)
+│   ├── ErrorHandling.kt       ← StatusPages config (catches DomainException)
 │   ├── HttpServer.kt          ← Ktor server factory
 │   ├── Monitoring.kt          ← call logging
 │   └── Serialization.kt       ← JSON config
 ├── infra/
-│   └── Db.kt                  ← in-memory store (sandwiches, extras, orders, stock)
+│   └── Db.kt                  ← data store
 └── app/
     └── App.kt                 ← lifecycle (start/teardown)
 ```

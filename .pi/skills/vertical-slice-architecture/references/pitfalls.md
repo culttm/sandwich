@@ -51,15 +51,15 @@ How to spot when Vertical Slice Architecture is breaking down.
 
 ```kotlin
 // ❌ orders/cancelOrder/CancelOrder.kt
-import com.sandwich.features.orders.createOrder.buildOrder  // importing from another slice!
+import com.example.features.orders.createOrder.buildOrder  // importing from another slice!
 ```
 
 **Fix:** extract shared logic into `common/domain/` as a pure function.
 
 ```kotlin
 // ✅ common/domain/PricingRules.kt
-fun calculateDeliveryFee(subtotal: Int): Int { /* pure */ }
-// Both setDelivery and cancelOrder use it
+fun calculateShippingFee(subtotal: Int): Int { /* pure */ }
+// Both assignShipping and cancelOrder use it
 ```
 
 ### 4. Feature Factory — Inconsistent Domain Rules
@@ -67,18 +67,19 @@ fun calculateDeliveryFee(subtotal: Int): Int { /* pure */ }
 **Symptom:** same business rule hardcoded differently in multiple slices.
 
 ```kotlin
-// ❌ setDelivery/Domain.kt
-val deliveryFee = if (subtotal > 500) 0 else 50
+// ❌ assignShipping/Domain.kt
+val shippingFee = if (subtotal > 500) 0 else 50
 
 // ❌ payOrder/Domain.kt
-val deliveryFee = if (subtotal > 400) 0 else 60  // different threshold!
+val shippingFee = if (subtotal > 400) 0 else 60  // different threshold!
 ```
 
 **Fix:** extract shared domain rules into `common/domain/`.
 
 ```kotlin
 // ✅ common/domain/PricingRules.kt
-fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THRESHOLD) 0 else DELIVERY_FEE
+fun calculateShippingFee(subtotal: Int): Int =
+    if (subtotal >= FREE_SHIPPING_THRESHOLD) 0 else SHIPPING_FEE
 ```
 
 ### 5. God Slice — Too Much in One File
@@ -89,7 +90,7 @@ fun calculateDeliveryFee(subtotal: Int): Int = if (subtotal >= FREE_DELIVERY_THR
 
 ### 6. Business Logic in ProduceOutput
 
-**Symptom:** ProduceOutput contains conditional logic beyond simple `when` + `orderError()`.
+**Symptom:** ProduceOutput contains conditional logic beyond simple `when` + `domainError()`.
 
 ```kotlin
 // ❌ ProduceOutput with business logic
@@ -133,7 +134,7 @@ Run through these checks when reviewing any PR:
 
 ### Slice Independence
 - [ ] Slice does not import from another slice
-- [ ] Slice only imports from `common/` and its own feature group's shared files (e.g., `OrderError.kt`)
+- [ ] Slice only imports from `common/` and its own feature group's shared files (e.g., `DomainError.kt`)
 - [ ] New feature = new slice folder, not modifications to existing slices
 
 ### 3-Phase Structure (for command slices)
@@ -141,7 +142,7 @@ Run through these checks when reviewing any PR:
 - [ ] Domain.kt: pure logic has no IO calls inside
 - [ ] Handler: trivial 3-line composition — gather → decide → produce
 - [ ] GatherInput: collects all data, returns Input data class
-- [ ] ProduceOutput: persists + maps errors via `orderError()`, NO business logic
+- [ ] ProduceOutput: persists + maps errors via `domainError()`, NO business logic
 - [ ] Decision modeled as sealed interface
 
 ### common/ Health
@@ -157,7 +158,7 @@ Run through these checks when reviewing any PR:
 
 ### Consistency
 - [ ] Files follow naming convention (Domain.kt, Handler, GatherInput, ProduceOutput)
-- [ ] Error codes added to `OrderErrorCode` enum
+- [ ] Error codes added to `DomainErrorCode` enum
 - [ ] Tests exist for pure logic (no mocks needed)
 
 ### Size

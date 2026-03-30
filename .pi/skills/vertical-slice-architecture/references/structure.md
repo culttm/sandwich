@@ -5,32 +5,28 @@ How to organize a Kotlin/Ktor project with Vertical Slice Architecture.
 ## Canonical Structure
 
 ```
-src/main/kotlin/com/sandwich/
+src/main/kotlin/com/example/
 ├── apps/
-│   └── SandwichHttpApi.kt              ← composition root + route registration
+│   └── AppServer.kt                   ← composition root + route registration
 ├── features/
-│   ├── menu/
-│   │   └── getMenu/
-│   │       └── GetMenu.kt             ← query slice (single file)
+│   ├── catalog/
+│   │   └── getProducts/
+│   │       └── GetProducts.kt         ← query slice (single file)
 │   └── orders/
-│       ├── OrderError.kt              ← shared error vocabulary for all order slices
+│       ├── DomainError.kt             ← shared error vocabulary for all order slices
 │       ├── createOrder/               ← command slice (5 files)
 │       │   ├── CreateOrder.kt          ← HTTP DTOs + route (wiring + protocol)
 │       │   ├── Domain.kt              ← Input + Decision + pure logic
 │       │   ├── CreateOrderHandler.kt  ← orchestrator
 │       │   ├── GatherCreateOrderInput.kt
 │       │   └── ProduceCreateOrderOutput.kt
-│       ├── setDelivery/               ← command slice
-│       │   ├── SetDelivery.kt
+│       ├── assignShipping/            ← command slice
+│       │   ├── AssignShipping.kt
 │       │   ├── Domain.kt
-│       │   ├── SetDeliveryHandler.kt
-│       │   ├── GatherSetDeliveryInput.kt
-│       │   └── ProduceSetDeliveryOutput.kt
+│       │   ├── AssignShippingHandler.kt
+│       │   ├── GatherAssignShippingInput.kt
+│       │   └── ProduceAssignShippingOutput.kt
 │       ├── payOrder/                  ← command slice
-│       │   └── ...
-│       ├── dispatchOrder/             ← command slice
-│       │   └── ...
-│       ├── completeDelivery/          ← command slice
 │       │   └── ...
 │       ├── cancelOrder/               ← command slice
 │       │   └── ...
@@ -46,7 +42,7 @@ src/main/kotlin/com/sandwich/
     │   ├── Monitoring.kt
     │   └── Serialization.kt
     ├── infra/
-    │   └── Db.kt                      ← in-memory store
+    │   └── Db.kt                      ← data store
     └── app/
         └── App.kt                     ← lifecycle management
 ```
@@ -55,7 +51,7 @@ src/main/kotlin/com/sandwich/
 
 | Element | Convention | Example |
 |---|---|---|
-| Feature group folder | noun, plural, lowercase | `orders/`, `menu/` |
+| Feature group folder | noun, plural, lowercase | `orders/`, `catalog/` |
 | Slice folder | camelCase verb+noun | `createOrder/`, `getOrder/` |
 | Entry point file | PascalCase, matches folder | `CreateOrder.kt` |
 | Domain file | Always `Domain.kt` | `Domain.kt` |
@@ -70,10 +66,10 @@ src/main/kotlin/com/sandwich/
 
 ## Route Registration
 
-Routes registered directly in `SandwichHttpApi.kt` — no intermediate `Routing.kt`:
+Routes registered directly in the composition root — no intermediate `Routing.kt`:
 
 ```kotlin
-fun SandwichHttpApi(db: Db = Db().apply { seed() }) = App {
+fun AppServer(db: Db = Db()) = App {
     val server = HttpServer(8080) {
         setupApplicationEnvironment()
         configureRoutes(db)
@@ -84,35 +80,31 @@ fun SandwichHttpApi(db: Db = Db().apply { seed() }) = App {
 
 private fun Application.configureRoutes(db: Db) {
     routing {
-        getMenuRoute(db)
+        getProductsRoute(db)
 
-        // ── Checkout flow ──
+        // ── Order flow ──
         createOrderRoute(db)
         getOrderRoute(db)
-        setDeliveryRoute(db)
+        assignShippingRoute(db)
         payOrderRoute(db)
-
-        // ── Fulfillment ──
-        dispatchOrderRoute(db)
-        completeDeliveryRoute(db)
         cancelOrderRoute(db)
     }
 }
 ```
 
-**Key:** `SandwichHttpApi.kt` is the **composition root** — where slices are wired with `Db`.
+**Key:** the app entry point is the **composition root** — where slices are wired with `Db`.
 Each slice's route function handles its own internal wiring (Handler, GatherInput, ProduceOutput).
 
 ## Dependency Flow
 
 ```
                  ┌──────────────────┐
-                 │ SandwichHttpApi   │ ← composition root
+                 │    AppServer      │ ← composition root
                  └────────┬─────────┘
             ┌─────────────┼─────────────┐
             ▼             ▼             ▼
       ┌──────────┐  ┌──────────┐  ┌──────────┐
-      │ orders/  │  │  menu/   │  │ payments/│  ← feature groups
+      │ orders/  │  │ catalog/ │  │ payments/│  ← feature groups
       └────┬─────┘  └────┬─────┘  └────┬─────┘
            │              │              │
            ▼              ▼              ▼
@@ -122,10 +114,10 @@ Each slice's route function handles its own internal wiring (Handler, GatherInpu
       └─────────────────────────────────────┘
 
 Rules:
-  ✅ Slice → common/         (allowed)
-  ✅ Slice → OrderError      (allowed — shared within feature group)
-  ❌ Slice → another slice   (forbidden)
-  ❌ common/ → any slice     (forbidden)
+  ✅ Slice → common/          (allowed)
+  ✅ Slice → DomainError       (allowed — shared within feature group)
+  ❌ Slice → another slice    (forbidden)
+  ❌ common/ → any slice      (forbidden)
 ```
 
 ## Migrating From Layered Architecture
@@ -164,8 +156,8 @@ When to create a new feature group folder:
 
 | Signal | Action |
 |---|---|
-| Different aggregate root | New folder: `orders/`, `menu/` |
+| Different aggregate root | New folder: `orders/`, `catalog/` |
 | Different bounded context | New folder: `billing/`, `shipping/` |
 | > 8 slices in one group | Consider splitting by subdomain |
-| Shared error vocabulary | Same group (e.g., all order slices share `OrderError.kt`) |
+| Shared error vocabulary | Same group (e.g., all order slices share `DomainError.kt`) |
 | No shared data at all | Definitely separate groups |

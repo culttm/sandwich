@@ -17,7 +17,7 @@ Organize code by feature, not by technical layer.
 
 ```
 Layered:   Controller → Service → Repository  (horizontal coupling)
-VSA:       [CreateOrder slice] ←→ [SetDelivery slice]  (independent)
+VSA:       [CreateOrder slice] ←→ [AssignShipping slice]  (independent)
 ```
 
 ## Slice = Use Case
@@ -26,46 +26,48 @@ Each slice handles **one request** — either a command (write) or a query (read
 
 | Slice type | Contains | Example |
 |---|---|---|
-| **Command** (write) | HTTP DTOs, route, Domain.kt, Handler, GatherInput, ProduceOutput | CreateOrder, CancelOrder, SetDelivery |
-| **Query** (read) | Response DTO, route (often no pure logic needed) | GetOrder, GetMenu |
+| **Command** (write) | HTTP DTOs, route, Domain.kt, Handler, GatherInput, ProduceOutput | CreateOrder, CancelOrder, AssignShipping |
+| **Query** (read) | Response DTO, route (often no pure logic needed) | GetOrder, GetProducts |
 
 ## Canonical Command Slice (with Impureim Sandwich inside)
 
 ### File structure — 5 files per command slice
 
 ```
-setDelivery/
-├── SetDelivery.kt              ← HTTP DTOs + route (wiring + protocol)
-├── Domain.kt                   ← Input type + Decision sealed interface + pure logic
-├── SetDeliveryHandler.kt       ← Orchestrator (3-line composition)
-├── GatherSetDeliveryInput.kt   ← 🔴 READ phase
-└── ProduceSetDeliveryOutput.kt ← 🔴 WRITE phase + error mapping
+assignShipping/
+├── AssignShipping.kt              ← HTTP DTOs + route (wiring + protocol)
+├── Domain.kt                      ← Input type + Decision sealed interface + pure logic
+├── AssignShippingHandler.kt       ← Orchestrator (3-line composition)
+├── GatherAssignShippingInput.kt   ← 🔴 READ phase
+└── ProduceAssignShippingOutput.kt ← 🔴 WRITE phase + error mapping
 ```
 
-### SetDelivery.kt — slice entry point
+### AssignShipping.kt — slice entry point
 
 ```kotlin
 // ── HTTP DTOs ──
 @Serializable
-data class SetDeliveryRequest(val address: String, val phone: String)
+data class AssignShippingRequest(val address: String, val phone: String)
 
 @Serializable
-data class SetDeliveryResponse(val orderId: String, val deliveryFee: Int, val total: Int)
+data class AssignShippingResponse(val orderId: String, val shippingFee: Int, val total: Int)
 
 // ── Route (wiring) — composition root ──
-fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
-    SetDeliveryHandler(
-        gatherInput = GatherSetDeliveryInput(readOrder = { id -> db.orders[id] }),
-        decide = ::decideDelivery,
-        produceOutput = ProduceSetDeliveryOutput(storeOrder = { order -> db.orders[order.id] = order })
+fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
+    AssignShippingHandler(
+        gatherInput = GatherAssignShippingInput(readOrder = { id -> db.orders[id] }),
+        decide = ::decideShipping,
+        produceOutput = ProduceAssignShippingOutput(storeOrder = { order -> db.orders[order.id] = order })
     )
 )
 
 // ── Route (HTTP protocol) ──
-fun Route.setDeliveryRoute(handler: suspend (String, SetDeliveryRequest) -> SetDeliveryResponse) {
-    post("/orders/{id}/delivery") {
+fun Route.assignShippingRoute(
+    handler: suspend (String, AssignShippingRequest) -> AssignShippingResponse
+) {
+    post("/orders/{id}/shipping") {
         val id = call.parameters["id"]!!
-        val request = call.receive<SetDeliveryRequest>()
+        val request = call.receive<AssignShippingRequest>()
         call.respond(HttpStatusCode.OK, handler(id, request))
     }
 }
@@ -78,15 +80,15 @@ fun Route.setDeliveryRoute(handler: suspend (String, SetDeliveryRequest) -> SetD
 ### Domain.kt — pure types + logic
 
 ```kotlin
-data class SetDeliveryInput(val order: Order?, val address: String, val phone: String)
+data class AssignShippingInput(val order: Order?, val address: String, val phone: String)
 
-sealed interface SetDeliveryDecision {
-    data class DeliverySet(val order: Order) : SetDeliveryDecision
-    data object NotFound : SetDeliveryDecision
-    data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
+sealed interface AssignShippingDecision {
+    data class ShippingAssigned(val order: Order) : AssignShippingDecision
+    data object NotFound : AssignShippingDecision
+    data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
 }
 
-fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision { /* pure */ }
+fun decideShipping(input: AssignShippingInput): AssignShippingDecision { /* pure */ }
 ```
 
 ### Query slice (simple — no sandwich needed)
@@ -96,7 +98,7 @@ fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision { /* pure */ }
 fun Route.getOrderRoute(db: Db) {
     get("/orders/{id}") {
         val id = call.parameters["id"]!!
-        val order = db.orders[id] ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+        val order = db.orders[id] ?: domainError(ORDER_NOT_FOUND, "Order not found")
         call.respond(HttpStatusCode.OK, order.toResponse())
     }
 }
@@ -107,33 +109,29 @@ fun Route.getOrderRoute(db: Db) {
 ## Project Structure
 
 ```
-src/main/kotlin/com/sandwich/
+src/main/kotlin/com/example/
 ├── apps/
-│   └── SandwichHttpApi.kt          ← composition root (route registration)
+│   └── AppServer.kt                ← composition root (route registration)
 ├── features/
-│   ├── menu/
-│   │   └── getMenu/
-│   │       └── GetMenu.kt          ← query slice (single file)
+│   ├── catalog/
+│   │   └── getProducts/
+│   │       └── GetProducts.kt      ← query slice (single file)
 │   └── orders/
-│       ├── OrderError.kt           ← shared error vocabulary
+│       ├── DomainError.kt          ← shared error vocabulary
 │       ├── createOrder/
 │       │   ├── CreateOrder.kt       ← HTTP DTOs + route
 │       │   ├── Domain.kt            ← pure types + logic
 │       │   ├── CreateOrderHandler.kt
 │       │   ├── GatherCreateOrderInput.kt
 │       │   └── ProduceCreateOrderOutput.kt
-│       ├── setDelivery/
-│       │   ├── SetDelivery.kt
+│       ├── assignShipping/
+│       │   ├── AssignShipping.kt
 │       │   ├── Domain.kt
-│       │   ├── SetDeliveryHandler.kt
-│       │   ├── GatherSetDeliveryInput.kt
-│       │   └── ProduceSetDeliveryOutput.kt
+│       │   ├── AssignShippingHandler.kt
+│       │   ├── GatherAssignShippingInput.kt
+│       │   └── ProduceAssignShippingOutput.kt
 │       ├── payOrder/
 │       │   └── ...                   ← same pattern
-│       ├── dispatchOrder/
-│       │   └── ...
-│       ├── completeDelivery/
-│       │   └── ...
 │       ├── cancelOrder/
 │       │   └── ...
 │       └── getOrder/
@@ -146,29 +144,27 @@ src/main/kotlin/com/sandwich/
     │   ├── ErrorHandling.kt         ← StatusPages config
     │   └── HttpServer.kt            ← Ktor server setup
     ├── infra/
-    │   └── Db.kt                    ← in-memory store
+    │   └── Db.kt                    ← data store
     └── app/
         └── App.kt                   ← lifecycle
 ```
 
-## Composition Root: SandwichHttpApi.kt
+## Composition Root
 
-Routes registered directly — no intermediate `Routing.kt`:
+Routes registered directly in the app entry point — no intermediate `Routing.kt`:
 
 ```kotlin
-fun SandwichHttpApi(db: Db = Db().apply { seed() }) = App {
+fun AppServer(db: Db = Db()) = App {
     val server = HttpServer(8080) {
         configureSerialization()
         configureErrorHandling()
         configureMonitoring()
         routing {
-            getMenuRoute(db)
+            getProductsRoute(db)
             createOrderRoute(db)
             getOrderRoute(db)
-            setDeliveryRoute(db)
+            assignShippingRoute(db)
             payOrderRoute(db)
-            dispatchOrderRoute(db)
-            completeDeliveryRoute(db)
             cancelOrderRoute(db)
         }
     }
@@ -179,22 +175,22 @@ fun SandwichHttpApi(db: Db = Db().apply { seed() }) = App {
 
 ## Error Handling: Shared Error Vocabulary
 
-All order slices share `OrderError` — a typed enum mapping errors to HTTP statuses:
+All order slices share a typed error enum mapping errors to HTTP statuses:
 
 ```kotlin
-enum class OrderErrorCode(val status: HttpStatusCode) {
+enum class DomainErrorCode(val status: HttpStatusCode) {
     ORDER_NOT_FOUND(HttpStatusCode.NotFound),
     WRONG_STATUS(HttpStatusCode.Conflict),
     BLANK_ADDRESS(HttpStatusCode.BadRequest),
     // ...each slice adds its codes
 }
 
-fun orderError(code: OrderErrorCode, message: String): Nothing =
-    throw OrderException(OrderError(code, message))
+fun domainError(code: DomainErrorCode, message: String): Nothing =
+    throw DomainException(DomainError(code, message))
 ```
 
-StatusPages catches `OrderException` and converts to HTTP response automatically.
-ProduceOutput functions call `orderError()` for error decisions — they throw, never return.
+StatusPages catches `DomainException` and converts to HTTP response automatically.
+ProduceOutput functions call `domainError()` for error decisions — they throw, never return.
 
 ## Decision Tree
 
@@ -241,7 +237,7 @@ orders/createOrder/
 
 ```kotlin
 fun CancelOrder(...) = { request ->
-    val refund = SetDelivery(db)(request.orderId, reverseRequest)  // ← calling another slice!
+    val result = AssignShipping(db)(request.orderId, reverseRequest)  // ← calling another slice!
 }
 ```
 
@@ -249,7 +245,7 @@ fun CancelOrder(...) = { request ->
 
 ```kotlin
 // common/domain/PricingRules.kt
-fun calculateDeliveryFee(subtotal: Int): Int { /* pure */ }
+fun calculateShippingFee(subtotal: Int): Int { /* pure */ }
 // Both slices use the shared pure function
 ```
 
@@ -266,7 +262,7 @@ class InventoryService(private val repo: InventoryRepository) {
 
 ```kotlin
 // common/domain/PricingRules.kt ← ✅
-fun calculateLineTotal(sandwichPrice: Int, extraPrices: List<Int>): Int { /* pure */ }
+fun calculateLineTotal(price: Int, quantity: Int): Int { /* pure */ }
 ```
 
 ## VSA + Impureim Sandwich
@@ -296,5 +292,5 @@ Before finishing any feature implementation, verify:
 4. `common/` contains **only pure functions** (domain/) and infra wiring
 5. Pure business logic is `fun` (not `suspend fun`), testable without mocks
 6. Handler is **trivial 3-line orchestrator** — no logic inside
-7. Error decisions mapped via `orderError()` in ProduceOutput — StatusPages handles HTTP
+7. Error decisions mapped via `domainError()` in ProduceOutput — StatusPages handles HTTP
 8. Route has **two overloads**: wiring (composition root) + HTTP protocol

@@ -11,7 +11,7 @@ No business logic. Read data, return DTO. Single file.
 fun Route.getOrderRoute(db: Db) {
     get("/orders/{id}") {
         val id = call.parameters["id"]!!
-        val order = db.orders[id] ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+        val order = db.orders[id] ?: domainError(ORDER_NOT_FOUND, "Order not found")
         call.respond(HttpStatusCode.OK, order.toResponse())
     }
 }
@@ -33,7 +33,7 @@ that sealed class decisions would be overkill. Single file.
 fun Route.createCustomerRoute(db: Db) {
     post("/customers") {
         val request = call.receive<CreateCustomerRequest>()
-        if (request.name.isBlank()) orderError(BLANK_NAME, "Name required")
+        if (request.name.isBlank()) domainError(BLANK_NAME, "Name required")
         val id = UUID.randomUUID().toString()
         db.customers[id] = Customer(id = id, name = request.name.trim())
         call.respond(HttpStatusCode.Created, CustomerResponse(id))
@@ -73,7 +73,7 @@ createOrder/
 fun Route.createOrderRoute(db: Db) = createOrderRoute(
     CreateOrderHandler(
         gatherInput = GatherCreateOrderInput(
-            readMenu = { db.sandwiches.toMap() },
+            readCatalog = { db.products.toMap() },
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
@@ -100,7 +100,7 @@ data class CreateOrderInput(
     val orderId: String,
     val customerName: String,
     val items: List<OrderItemRequest>,
-    val menu: Map<String, MenuItem>,
+    val catalog: Map<String, Product>,
     val now: Instant
 )
 
@@ -108,12 +108,12 @@ sealed interface CreateOrderDecision {
     data class Created(val order: Order) : CreateOrderDecision
     data class EmptyOrder(val message: String) : CreateOrderDecision
     data class BlankName(val message: String) : CreateOrderDecision
-    data class UnknownSandwich(val ids: List<String>) : CreateOrderDecision
+    data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
 fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
-    if (input.customerName.isBlank()) return CreateOrderDecision.BlankName("Вкажіть ім'я")
-    if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder("Замовлення порожнє")
+    if (input.customerName.isBlank()) return CreateOrderDecision.BlankName("Name required")
+    if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder("Order must have items")
     // ... pure logic ...
     return CreateOrderDecision.Created(order)
 }
@@ -137,7 +137,7 @@ fun CreateOrderHandler(
 
 ```kotlin
 fun GatherCreateOrderInput(
-    readMenu: () -> Map<String, MenuItem>,
+    readCatalog: () -> Map<String, Product>,
     generateId: () -> String,
     now: () -> Instant
 ): (CreateOrderRequest) -> CreateOrderInput = { request ->
@@ -145,7 +145,7 @@ fun GatherCreateOrderInput(
         orderId = generateId(),
         customerName = request.customerName,
         items = request.items,
-        menu = readMenu(),
+        catalog = readCatalog(),
         now = now()
     )
 }
@@ -162,9 +162,9 @@ fun ProduceCreateOrderOutput(
             storeOrder(decision.order)
             CreateOrderResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is CreateOrderDecision.BlankName -> orderError(BLANK_NAME, decision.message)
-        is CreateOrderDecision.EmptyOrder -> orderError(EMPTY_ORDER, decision.message)
-        is CreateOrderDecision.UnknownSandwich -> orderError(UNKNOWN_SANDWICH, "Невідомі: ${decision.ids}")
+        is CreateOrderDecision.BlankName -> domainError(BLANK_NAME, decision.message)
+        is CreateOrderDecision.EmptyOrder -> domainError(EMPTY_ORDER, decision.message)
+        is CreateOrderDecision.UnknownProducts -> domainError(UNKNOWN_PRODUCT, "Unknown: ${decision.ids}")
     }
 }
 ```
@@ -191,7 +191,7 @@ Does the slice have business logic?
 |---|---|---|
 | 1. Direct Query | None (no pure logic) | HTTP request → response |
 | 2. Transaction Script | Small pure helpers | HTTP request → response |
-| 3. 3-Phase Sandwich | Pure function — all branches | Full checkout flow |
+| 3. 3-Phase Sandwich | Pure function — all branches | Full flow |
 
 ### Unit test template (pure function — no mocks)
 
@@ -205,7 +205,7 @@ fun `blank name is rejected`() {
 
 @Test
 fun `valid order calculates discount for 3+ items`() {
-    val input = createOrderInput(items = listOf(item("s1"), item("s2"), item("s3")))
+    val input = createOrderInput(items = listOf(item("p1"), item("p2"), item("p3")))
     val decision = buildOrder(input)
     assertIs<CreateOrderDecision.Created>(decision)
     assertTrue(decision.order.discount > 0)

@@ -25,42 +25,42 @@ GatherInput    →    decide    →    ProduceOutput
 ### File structure per slice
 
 ```
-setDelivery/
-├── SetDelivery.kt              ← HTTP DTOs + route (wiring)
-├── Domain.kt                   ← Input type + Decision sealed interface + pure logic
-├── SetDeliveryHandler.kt       ← Orchestrator (3-line composition)
-├── GatherSetDeliveryInput.kt   ← READ phase
-└── ProduceSetDeliveryOutput.kt ← WRITE phase
+assignShipping/
+├── AssignShipping.kt              ← HTTP DTOs + route (wiring)
+├── Domain.kt                      ← Input type + Decision sealed interface + pure logic
+├── AssignShippingHandler.kt       ← Orchestrator (3-line composition)
+├── GatherAssignShippingInput.kt   ← READ phase
+└── ProduceAssignShippingOutput.kt ← WRITE phase
 ```
 
 ### Domain.kt — pure types + logic
 
 ```kotlin
 // ── Input (assembled by GatherInput) ──
-data class SetDeliveryInput(
+data class AssignShippingInput(
     val order: Order?,
     val address: String,
     val phone: String,
-    val deliveryTime: String?
+    val deliveryDate: String?
 )
 
 // ── Decision (sealed — each branch = different outcome) ──
-sealed interface SetDeliveryDecision {
-    data class DeliverySet(val order: Order) : SetDeliveryDecision
-    data object NotFound : SetDeliveryDecision
-    data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
-    data class BlankAddress(val message: String = "Вкажіть адресу") : SetDeliveryDecision
+sealed interface AssignShippingDecision {
+    data class ShippingAssigned(val order: Order) : AssignShippingDecision
+    data object NotFound : AssignShippingDecision
+    data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
+    data object BlankAddress : AssignShippingDecision
 }
 
 // ── Pure logic (NOT suspend) ──
-fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
-    val order = input.order ?: return SetDeliveryDecision.NotFound
-    if (order.status != OrderStatus.DRAFT) return SetDeliveryDecision.WrongStatus(order.status)
-    if (input.address.isBlank()) return SetDeliveryDecision.BlankAddress()
+fun decideShipping(input: AssignShippingInput): AssignShippingDecision {
+    val order = input.order ?: return AssignShippingDecision.NotFound
+    if (order.status != OrderStatus.DRAFT) return AssignShippingDecision.WrongStatus(order.status)
+    if (input.address.isBlank()) return AssignShippingDecision.BlankAddress
 
-    val deliveryFee = calculateDeliveryFee(order.subtotal)
-    return SetDeliveryDecision.DeliverySet(
-        order.copy(status = OrderStatus.AWAITING_PAYMENT, deliveryFee = deliveryFee)
+    val shippingFee = calculateShippingFee(order.subtotal)
+    return AssignShippingDecision.ShippingAssigned(
+        order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
     )
 }
 ```
@@ -68,11 +68,11 @@ fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
 ### Handler — trivial orchestrator
 
 ```kotlin
-fun SetDeliveryHandler(
-    gatherInput: (String, SetDeliveryRequest) -> SetDeliveryInput,
-    decide: (SetDeliveryInput) -> SetDeliveryDecision,
-    produceOutput: suspend (SetDeliveryDecision) -> SetDeliveryResponse
-): suspend (String, SetDeliveryRequest) -> SetDeliveryResponse = { orderId, request ->
+fun AssignShippingHandler(
+    gatherInput: (String, AssignShippingRequest) -> AssignShippingInput,
+    decide: (AssignShippingInput) -> AssignShippingDecision,
+    produceOutput: suspend (AssignShippingDecision) -> AssignShippingResponse
+): suspend (String, AssignShippingRequest) -> AssignShippingResponse = { orderId, request ->
     val input = gatherInput(orderId, request)
     val decision = decide(input)
     produceOutput(decision)
@@ -82,14 +82,14 @@ fun SetDeliveryHandler(
 ### GatherInput — READ phase
 
 ```kotlin
-fun GatherSetDeliveryInput(
+fun GatherAssignShippingInput(
     readOrder: (String) -> Order?
-): (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
-    SetDeliveryInput(
+): (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
+    AssignShippingInput(
         order = readOrder(orderId),
         address = request.address,
         phone = request.phone,
-        deliveryTime = request.deliveryTime
+        deliveryDate = request.deliveryDate
     )
 }
 ```
@@ -97,20 +97,20 @@ fun GatherSetDeliveryInput(
 ### ProduceOutput — WRITE phase + error mapping
 
 ```kotlin
-fun ProduceSetDeliveryOutput(
+fun ProduceAssignShippingOutput(
     storeOrder: (Order) -> Unit
-): suspend (SetDeliveryDecision) -> SetDeliveryResponse = { decision ->
+): suspend (AssignShippingDecision) -> AssignShippingResponse = { decision ->
     when (decision) {
-        is SetDeliveryDecision.DeliverySet -> {
+        is AssignShippingDecision.ShippingAssigned -> {
             storeOrder(decision.order)
-            SetDeliveryResponse(orderId = decision.order.id, total = decision.order.total)
+            AssignShippingResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is SetDeliveryDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
-        is SetDeliveryDecision.WrongStatus ->
-            orderError(WRONG_STATUS, "Очікується DRAFT, поточний: ${decision.current}")
-        is SetDeliveryDecision.BlankAddress ->
-            orderError(BLANK_ADDRESS, decision.message)
+        is AssignShippingDecision.NotFound ->
+            domainError(ORDER_NOT_FOUND, "Order not found")
+        is AssignShippingDecision.WrongStatus ->
+            domainError(WRONG_STATUS, "Expected DRAFT, got: ${decision.current}")
+        is AssignShippingDecision.BlankAddress ->
+            domainError(BLANK_ADDRESS, "Address is required")
     }
 }
 ```
@@ -119,23 +119,25 @@ fun ProduceSetDeliveryOutput(
 
 ```kotlin
 // Wiring: connects real deps to phases
-fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
-    SetDeliveryHandler(
-        gatherInput = GatherSetDeliveryInput(
+fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
+    AssignShippingHandler(
+        gatherInput = GatherAssignShippingInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideDelivery,
-        produceOutput = ProduceSetDeliveryOutput(
+        decide = ::decideShipping,
+        produceOutput = ProduceAssignShippingOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )
     )
 )
 
 // HTTP protocol: receives request, calls handler, responds
-fun Route.setDeliveryRoute(handler: suspend (String, SetDeliveryRequest) -> SetDeliveryResponse) {
-    post("/orders/{id}/delivery") {
+fun Route.assignShippingRoute(
+    handler: suspend (String, AssignShippingRequest) -> AssignShippingResponse
+) {
+    post("/orders/{id}/shipping") {
         val id = call.parameters["id"]!!
-        val request = call.receive<SetDeliveryRequest>()
+        val request = call.receive<AssignShippingRequest>()
         call.respond(HttpStatusCode.OK, handler(id, request))
     }
 }

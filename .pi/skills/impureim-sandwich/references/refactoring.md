@@ -79,7 +79,7 @@ fun ProduceCreateOrderOutput(
             CreateOrderResponse(orderId = decision.order.id)
         }
         is OutOfStock ->
-            orderError(OUT_OF_STOCK, "Missing: ${decision.missing}")
+            domainError(OUT_OF_STOCK, "Missing: ${decision.missing}")
     }
 }
 ```
@@ -134,11 +134,11 @@ For each method in a service class:
 Use when the pure function has **branching outcomes** that require **different actions**:
 
 ```kotlin
-sealed interface SetDeliveryDecision {
-    data class DeliverySet(val order: Order) : SetDeliveryDecision
-    data object NotFound : SetDeliveryDecision
-    data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
-    data class BlankAddress(val message: String) : SetDeliveryDecision
+sealed interface AssignShippingDecision {
+    data class ShippingAssigned(val order: Order) : AssignShippingDecision
+    data object NotFound : AssignShippingDecision
+    data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
+    data object BlankAddress : AssignShippingDecision
 }
 ```
 
@@ -166,8 +166,7 @@ class OrderService(
 ### ✅ New: lambda injection (function-based)
 ```kotlin
 fun GatherCreateOrderInput(
-    readMenu: () -> Map<String, MenuItem>,     // plain lambda
-    readExtras: () -> Map<String, ExtraItem>,
+    readCatalog: () -> Map<String, Product>,   // plain lambda
     generateId: () -> String,
     now: () -> Instant
 ): (CreateOrderRequest) -> CreateOrderInput = { ... }
