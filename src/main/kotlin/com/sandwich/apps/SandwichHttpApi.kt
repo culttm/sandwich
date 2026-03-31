@@ -16,10 +16,10 @@ import com.sandwich.features.getOrder.getOrderRoute
 import com.sandwich.features.payOrder.payOrderRoute
 import com.sandwich.features.setDelivery.setDeliveryRoute
 import com.sandwich.common.infra.Db
+import com.sandwich.features.CatalogItem
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import com.sandwich.common.infra.seed
 import io.ktor.server.application.Application
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -73,4 +73,32 @@ private fun Application.setupApplicationEnvironment() {
     configureErrorHandling { orderErrorHandling() }
     configureMonitoring()
     configureHealthRoutes()
+}
+
+fun Db.seed() {
+    sandwiches.putAll(
+        mapOf(
+            "classic-club"   to CatalogItem("classic-club",   "Classic Club",   120),
+            "turkey-avocado" to CatalogItem("turkey-avocado", "Turkey Avocado", 145),
+            "veggie-delight" to CatalogItem("veggie-delight", "Veggie Delight",  99),
+            "blt"            to CatalogItem("blt",            "BLT",            110),
+        )
+    )
+    extras.putAll(
+        mapOf(
+            "extra-cheese" to CatalogItem("extra-cheese", "Сир додатковий", 25),
+            "jalapenos"    to CatalogItem("jalapenos",    "Халапеньо",       15),
+            "bacon"        to CatalogItem("bacon",        "Бекон",           35),
+            "avocado"      to CatalogItem("avocado",      "Авокадо",         30),
+            "extra-sauce"  to CatalogItem("extra-sauce",  "Соус додатковий", 10),
+        )
+    )
+    stock.putAll(
+        mapOf(
+            "classic-club"   to 50,
+            "turkey-avocado" to 30,
+            "veggie-delight" to 40,
+            "blt"            to 35,
+        )
+    )
 }

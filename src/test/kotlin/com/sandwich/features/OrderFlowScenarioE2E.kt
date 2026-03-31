@@ -2,7 +2,7 @@ package com.sandwich.features
 
 import com.sandwich.apps.SandwichHttpApi
 import com.sandwich.common.infra.Db
-import com.sandwich.common.infra.seed
+import com.sandwich.apps.seed
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
