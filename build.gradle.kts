@@ -35,7 +35,6 @@ dependencies {
 
     // MongoDB
     implementation(libs.mongodb.driver)
-    implementation(libs.mongodb.bson.kotlinx)
 
     // Logging
     implementation(libs.logback)

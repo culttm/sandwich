@@ -1,6 +1,10 @@
 package com.sandwich.features.createOrder
 
-import com.sandwich.common.infra.Db
+import com.sandwich.common.database.bson.CatalogItemBson
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.collection.catalog.allByCategory
+import com.sandwich.common.database.collection.order.saveOrder
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -26,17 +30,20 @@ data class CreateOrderResponse(val orderId: String, val total: Int)
 
 // ── Route (wiring) ──
 
-fun Route.createOrderRoute(db: Db) = createOrderRoute(
+fun Route.createOrderRoute(
+    catalogItems: MongoCollection<CatalogItemBson>,
+    orders: MongoCollection<OrderBson>
+) = createOrderRoute(
     CreateOrderHandler(
         gatherInput = GatherCreateOrderInput(
-            readMenu = { db.allSandwiches() },
-            readExtras = { db.allExtras() },
+            readMenu = { catalogItems.allByCategory("sandwich") },
+            readExtras = { catalogItems.allByCategory("extra") },
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
         decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
-            storeOrder = { order -> db.saveOrder(order) }
+            storeOrder = { order -> orders.saveOrder(order) }
         )
     )
 )

@@ -1,6 +1,11 @@
 package com.sandwich.features.cancelOrder
 
-import com.sandwich.common.infra.Db
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.bson.StockEntryBson
+import com.sandwich.common.database.collection.order.findOrderById
+import com.sandwich.common.database.collection.order.saveOrder
+import com.sandwich.common.database.collection.stock.adjustStock
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -18,17 +23,20 @@ data class CancelResponse(val orderId: String, val status: String, val refund: B
 
 // ── Route (wiring) ──
 
-fun Route.cancelOrderRoute(db: Db) = cancelOrderRoute(
+fun Route.cancelOrderRoute(
+    orders: MongoCollection<OrderBson>,
+    stock: MongoCollection<StockEntryBson>
+) = cancelOrderRoute(
     CancelOrderHandler(
         gatherInput = GatherCancelOrderInput(
-            readOrder = { id -> db.findOrder(id) },
+            readOrder = { id -> orders.findOrderById(id) },
             now = Instant::now
         ),
         decide = ::cancelOrder,
         produceOutput = ProduceCancelOrderOutput(
-            storeOrder = { order -> db.saveOrder(order) },
-            releaseStock = { stock ->
-                stock.forEach { (id, qty) -> db.adjustStock(id, qty) }
+            storeOrder = { order -> orders.saveOrder(order) },
+            releaseStock = { reductions ->
+                reductions.forEach { (id, qty) -> stock.adjustStock(id, qty) }
             }
         )
     )

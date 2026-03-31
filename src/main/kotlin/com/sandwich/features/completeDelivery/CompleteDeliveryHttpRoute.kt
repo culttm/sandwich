@@ -1,6 +1,9 @@
 package com.sandwich.features.completeDelivery
 
-import com.sandwich.common.infra.Db
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.collection.order.findOrderById
+import com.sandwich.common.database.collection.order.saveOrder
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -17,14 +20,14 @@ data class CompleteDeliveryResponse(val orderId: String, val status: String)
 
 // ── Route (wiring) ──
 
-fun Route.completeDeliveryRoute(db: Db) = completeDeliveryRoute(
+fun Route.completeDeliveryRoute(orders: MongoCollection<OrderBson>) = completeDeliveryRoute(
     CompleteDeliveryHandler(
         gatherInput = GatherCompleteDeliveryInput(
-            readOrder = { id -> db.findOrder(id) }
+            readOrder = { id -> orders.findOrderById(id) }
         ),
         decide = ::completeDelivery,
         produceOutput = ProduceCompleteDeliveryOutput(
-            storeOrder = { order -> db.saveOrder(order) }
+            storeOrder = { order -> orders.saveOrder(order) }
         )
     )
 )

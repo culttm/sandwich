@@ -1,8 +1,7 @@
 package com.sandwich
 
 import com.sandwich.apps.SandwichHttpApi
-import com.sandwich.apps.seed
-import com.sandwich.common.infra.Db
+import com.mongodb.kotlin.client.coroutine.MongoClient
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -26,8 +25,9 @@ class AppTest {
 
     @Test
     fun `health check returns ok`() {
-        val db = Db.create(mongo.connectionString, "app-test-${System.nanoTime()}")
-        withTestApp(SandwichHttpApi(db)) {
+        val database = MongoClient.create(mongo.connectionString)
+            .getDatabase("app-test-${System.nanoTime()}")
+        withTestApp(SandwichHttpApi(database)) {
             val response = client.get("http://localhost:8080/health")
             val text = response.bodyAsText()
             println(text)

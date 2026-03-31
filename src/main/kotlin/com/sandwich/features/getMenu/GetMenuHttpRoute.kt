@@ -1,7 +1,9 @@
 package com.sandwich.features.getMenu
 
+import com.sandwich.common.database.bson.CatalogItemBson
+import com.sandwich.common.database.collection.catalog.allByCategory
 import com.sandwich.features.Menu
-import com.sandwich.common.infra.Db
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -12,8 +14,13 @@ import io.ktor.server.routing.*
 
 // ── Route (wiring) ──
 
-fun Route.getMenuRoute(db: Db) = getMenuRoute(
-    handler = { Menu(sandwiches = db.allSandwiches().values.toList(), extras = db.allExtras().values.toList()) }
+fun Route.getMenuRoute(catalogItems: MongoCollection<CatalogItemBson>) = getMenuRoute(
+    handler = {
+        Menu(
+            sandwiches = catalogItems.allByCategory("sandwich").values.toList(),
+            extras = catalogItems.allByCategory("extra").values.toList()
+        )
+    }
 )
 
 // ── Route (HTTP) ──

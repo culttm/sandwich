@@ -1,13 +1,11 @@
 package com.sandwich.features
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 // ── Catalog ──
 
 @Serializable
 data class CatalogItem(
-    @SerialName("_id")
     val id: String,
     val name: String,
     val price: Int,
@@ -67,7 +65,6 @@ data class OrderLine(
 
 @Serializable
 data class Order(
-    @SerialName("_id")
     val id: String,
     val customerName: String,
     val items: List<OrderLine>,
@@ -78,5 +75,6 @@ data class Order(
     val status: OrderStatus,
     val delivery: DeliveryInfo? = null,
     val payment: PaymentInfo? = null,
-    val createdAt: String
+    val createdAt: String,
+    val version: Int = 0
 )

@@ -1,6 +1,9 @@
 package com.sandwich.features.setDelivery
 
-import com.sandwich.common.infra.Db
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.collection.order.findOrderById
+import com.sandwich.common.database.collection.order.saveOrder
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -29,14 +32,14 @@ data class SetDeliveryResponse(
 
 // ── Route (wiring) ──
 
-fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
+fun Route.setDeliveryRoute(orders: MongoCollection<OrderBson>) = setDeliveryRoute(
     SetDeliveryHandler(
         gatherInput = GatherSetDeliveryInput(
-            readOrder = { id -> db.findOrder(id) }
+            readOrder = { id -> orders.findOrderById(id) }
         ),
         decide = ::setDelivery,
         produceOutput = ProduceSetDeliveryOutput(
-            storeOrder = { order -> db.saveOrder(order) }
+            storeOrder = { order -> orders.saveOrder(order) }
         )
     )
 )

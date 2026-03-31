@@ -2,7 +2,12 @@ package com.sandwich.features
 
 import com.sandwich.apps.SandwichHttpApi
 import com.sandwich.apps.seed
-import com.sandwich.common.infra.Db
+import com.sandwich.common.database.bson.StockEntryBson
+import com.sandwich.common.database.collection.stock.adjustStock
+import com.sandwich.common.database.collection.stock.getStock
+import com.sandwich.common.database.collection.stock.setStock
+import com.mongodb.kotlin.client.coroutine.MongoClient
+import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
@@ -36,7 +41,7 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
         val mongo = MongoDBContainer("mongo:7")
     }
 
-    private lateinit var db: Db
+    private lateinit var database: MongoDatabase
     private lateinit var teardown: () -> Unit
     private lateinit var client: HttpClient
 
@@ -44,9 +49,10 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
 
     @BeforeEach
     fun setUp() {
-        db = Db.create(mongo.connectionString, "sandwich-test-${System.nanoTime()}")
-        runBlocking { db.seed() }
-        teardown = runBlocking { SandwichHttpApi(db)() }
+        database = MongoClient.create(mongo.connectionString)
+            .getDatabase("sandwich-test-${System.nanoTime()}")
+        runBlocking { database.seed() }
+        teardown = runBlocking { SandwichHttpApi(database)() }
         client = HttpClient {
             install(ContentNegotiation) { json() }
         }
@@ -200,15 +206,16 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
     }
 
     // ══════════════════════════════════════════════════════
-    //  Stock management (direct DB access)
+    //  Stock management (direct collection access)
     // ══════════════════════════════════════════════════════
 
+    private val stockCollection get() = database.getCollection<StockEntryBson>("stock")
+
     override suspend fun getStock(sandwichId: String): Int =
-        db.getStock(sandwichId)
+        stockCollection.getStock(sandwichId)
 
     override suspend fun setStock(sandwichId: String, quantity: Int) {
-        val current = db.getStock(sandwichId)
-        db.adjustStock(sandwichId, quantity - current)
+        stockCollection.setStock(sandwichId, quantity)
     }
 
     // ══════════════════════════════════════════════════════

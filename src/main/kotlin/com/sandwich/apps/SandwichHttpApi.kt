@@ -2,11 +2,18 @@ package com.sandwich.apps
 
 import com.sandwich.common.app.App
 import com.sandwich.common.app.Teardown
+import com.sandwich.common.database.bson.CatalogItemBson
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.bson.StockEntryBson
+import com.sandwich.common.database.bson.toBson
+import com.sandwich.common.database.collection.catalog.saveCatalogItems
+import com.sandwich.common.database.collection.stock.saveStockEntries
 import com.sandwich.common.http.HttpServer
 import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.features.orderErrorHandling
 import com.sandwich.common.http.configureMonitoring
 import com.sandwich.common.http.configureSerialization
+import com.sandwich.features.CatalogItem
 import com.sandwich.features.getMenu.getMenuRoute
 import com.sandwich.features.cancelOrder.cancelOrderRoute
 import com.sandwich.features.completeDelivery.completeDeliveryRoute
@@ -15,9 +22,8 @@ import com.sandwich.features.dispatchOrder.dispatchOrderRoute
 import com.sandwich.features.getOrder.getOrderRoute
 import com.sandwich.features.payOrder.payOrderRoute
 import com.sandwich.features.setDelivery.setDeliveryRoute
-import com.sandwich.common.infra.Db
-import com.sandwich.common.infra.StockEntry
-import com.sandwich.features.CatalogItem
+import com.mongodb.kotlin.client.coroutine.MongoCollection
+import com.mongodb.kotlin.client.coroutine.MongoDatabase
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -26,14 +32,18 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
 fun SandwichHttpApi(
-    db: Db,
+    database: MongoDatabase,
     logger: Logger = LoggerFactory.getLogger("SandwichHttpApi")
 ) = App {
     logger.info("Starting SandwichHttpApi")
 
+    val catalogItems = database.getCollection<CatalogItemBson>("catalog_items")
+    val orders = database.getCollection<OrderBson>("orders")
+    val stock = database.getCollection<StockEntryBson>("stock")
+
     val server = HttpServer(8080) {
         setupApplicationEnvironment()
-        configureRoutes(db)
+        configureRoutes(catalogItems, orders, stock)
     }
     server.start()
 
@@ -44,20 +54,24 @@ fun SandwichHttpApi(
     }
 }
 
-private fun Application.configureRoutes(db: Db) {
+private fun Application.configureRoutes(
+    catalogItems: MongoCollection<CatalogItemBson>,
+    orders: MongoCollection<OrderBson>,
+    stock: MongoCollection<StockEntryBson>
+) {
     routing {
-        getMenuRoute(db)
+        getMenuRoute(catalogItems)
 
         // ── Checkout flow ──
-        createOrderRoute(db)
-        getOrderRoute(db)
-        setDeliveryRoute(db)
-        payOrderRoute(db)
+        createOrderRoute(catalogItems, orders)
+        getOrderRoute(orders)
+        setDeliveryRoute(orders)
+        payOrderRoute(orders, stock)
 
         // ── Fulfillment ──
-        dispatchOrderRoute(db)
-        completeDeliveryRoute(db)
-        cancelOrderRoute(db)
+        dispatchOrderRoute(orders)
+        completeDeliveryRoute(orders)
+        cancelOrderRoute(orders, stock)
     }
 }
 
@@ -76,8 +90,11 @@ private fun Application.setupApplicationEnvironment() {
     configureHealthRoutes()
 }
 
-suspend fun Db.seed() {
-    saveCatalogItems(
+suspend fun MongoDatabase.seed() {
+    val catalogItems = getCollection<CatalogItemBson>("catalog_items")
+    val stock = getCollection<StockEntryBson>("stock")
+
+    catalogItems.saveCatalogItems(
         CatalogItem("classic-club",   "Classic Club",   120, "sandwich"),
         CatalogItem("turkey-avocado", "Turkey Avocado", 145, "sandwich"),
         CatalogItem("veggie-delight", "Veggie Delight",  99, "sandwich"),
@@ -88,10 +105,10 @@ suspend fun Db.seed() {
         CatalogItem("avocado",        "Авокадо",         30, "extra"),
         CatalogItem("extra-sauce",    "Соус додатковий", 10, "extra"),
     )
-    saveStockEntries(
-        StockEntry("classic-club",   50),
-        StockEntry("turkey-avocado", 30),
-        StockEntry("veggie-delight", 40),
-        StockEntry("blt",            35),
+    stock.saveStockEntries(
+        "classic-club" to 50,
+        "turkey-avocado" to 30,
+        "veggie-delight" to 40,
+        "blt" to 35,
     )
 }

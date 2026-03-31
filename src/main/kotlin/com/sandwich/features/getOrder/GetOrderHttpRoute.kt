@@ -1,9 +1,11 @@
 package com.sandwich.features.getOrder
 
+import com.sandwich.common.database.bson.OrderBson
+import com.sandwich.common.database.collection.order.findOrderById
 import com.sandwich.features.Order
-import com.sandwich.common.infra.Db
 import com.sandwich.features.OrderErrorCode.*
 import com.sandwich.features.orderError
+import com.mongodb.kotlin.client.coroutine.MongoCollection
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -14,8 +16,10 @@ import io.ktor.server.routing.*
 
 // ── Route (wiring) ──
 
-fun Route.getOrderRoute(db: Db) = getOrderRoute(
-    handler = { orderId -> db.findOrder(orderId) ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено") }
+fun Route.getOrderRoute(orders: MongoCollection<OrderBson>) = getOrderRoute(
+    handler = { orderId ->
+        orders.findOrderById(orderId) ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
+    }
 )
 
 // ── Route (HTTP) ──
