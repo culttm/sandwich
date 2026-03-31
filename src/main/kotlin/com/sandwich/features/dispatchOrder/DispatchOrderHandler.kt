@@ -5,7 +5,7 @@ package com.sandwich.features.dispatchOrder
 // ══════════════════════════════════════════════════════════════
 
 fun DispatchOrderHandler(
-    gatherInput: (String) -> DispatchOrderInput,
+    gatherInput: suspend (String) -> DispatchOrderInput,
     decide: (DispatchOrderInput) -> DispatchOrderDecision,
     produceOutput: suspend (DispatchOrderDecision) -> DispatchResponse
 ): suspend (String) -> DispatchResponse = { orderId ->

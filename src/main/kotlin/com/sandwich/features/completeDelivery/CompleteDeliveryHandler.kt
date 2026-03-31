@@ -5,7 +5,7 @@ package com.sandwich.features.completeDelivery
 // ══════════════════════════════════════════════════════════════
 
 fun CompleteDeliveryHandler(
-    gatherInput: (String) -> CompleteDeliveryInput,
+    gatherInput: suspend (String) -> CompleteDeliveryInput,
     decide: (CompleteDeliveryInput) -> CompleteDeliveryDecision,
     produceOutput: suspend (CompleteDeliveryDecision) -> CompleteDeliveryResponse
 ): suspend (String) -> CompleteDeliveryResponse = { orderId ->

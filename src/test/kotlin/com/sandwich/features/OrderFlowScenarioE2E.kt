@@ -1,8 +1,8 @@
 package com.sandwich.features
 
 import com.sandwich.apps.SandwichHttpApi
-import com.sandwich.common.infra.Db
 import com.sandwich.apps.seed
+import com.sandwich.common.infra.Db
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
@@ -14,16 +14,27 @@ import kotlinx.serialization.json.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
+import org.testcontainers.containers.MongoDBContainer
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 // ══════════════════════════════════════════════════════════════
 //  E2E: запускаємо справжній SandwichHttpApi на :8080
+//  MongoDB через TestContainers
 // ══════════════════════════════════════════════════════════════
 
+@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OrderFlowScenarioE2E : OrderFlowScenario() {
+
+    companion object {
+        @Container
+        @JvmStatic
+        val mongo = MongoDBContainer("mongo:7")
+    }
 
     private lateinit var db: Db
     private lateinit var teardown: () -> Unit
@@ -33,7 +44,8 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
 
     @BeforeEach
     fun setUp() {
-        db = Db().apply { seed() }
+        db = Db.create(mongo.connectionString, "sandwich-test-${System.nanoTime()}")
+        runBlocking { db.seed() }
         teardown = runBlocking { SandwichHttpApi(db)() }
         client = HttpClient {
             install(ContentNegotiation) { json() }
@@ -192,10 +204,11 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
     // ══════════════════════════════════════════════════════
 
     override suspend fun getStock(sandwichId: String): Int =
-        db.stock[sandwichId] ?: 0
+        db.getStock(sandwichId)
 
     override suspend fun setStock(sandwichId: String, quantity: Int) {
-        db.stock[sandwichId] = quantity
+        val current = db.getStock(sandwichId)
+        db.adjustStock(sandwichId, quantity - current)
     }
 
     // ══════════════════════════════════════════════════════

@@ -13,7 +13,7 @@ import io.ktor.server.routing.*
 // ── Route (wiring) ──
 
 fun Route.getMenuRoute(db: Db) = getMenuRoute(
-    handler = { Menu(sandwiches = db.sandwiches.values.toList(), extras = db.extras.values.toList()) }
+    handler = { Menu(sandwiches = db.allSandwiches().values.toList(), extras = db.allExtras().values.toList()) }
 )
 
 // ── Route (HTTP) ──

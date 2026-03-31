@@ -10,7 +10,7 @@ import com.sandwich.features.orderError
 // ══════════════════════════════════════════════════════════════
 
 fun ProduceCreateOrderOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (CreateOrderDecision) -> CreateOrderResponse = { decision ->
     when (decision) {
         is CreateOrderDecision.Created -> {

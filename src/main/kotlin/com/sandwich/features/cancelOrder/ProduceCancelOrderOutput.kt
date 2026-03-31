@@ -10,8 +10,8 @@ import com.sandwich.features.orderError
 // ══════════════════════════════════════════════════════════════
 
 fun ProduceCancelOrderOutput(
-    storeOrder: (Order) -> Unit,
-    releaseStock: (Map<String, Int>) -> Unit
+    storeOrder: suspend (Order) -> Unit,
+    releaseStock: suspend (Map<String, Int>) -> Unit
 ): suspend (CancelOrderDecision) -> CancelResponse = { decision ->
     when (decision) {
         is CancelOrderDecision.Cancelled -> {

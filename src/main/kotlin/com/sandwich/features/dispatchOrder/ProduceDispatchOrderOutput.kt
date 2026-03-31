@@ -10,7 +10,7 @@ import com.sandwich.features.orderError
 // ══════════════════════════════════════════════════════════════
 
 fun ProduceDispatchOrderOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (DispatchOrderDecision) -> DispatchResponse = { decision ->
     when (decision) {
         is DispatchOrderDecision.Dispatched -> {

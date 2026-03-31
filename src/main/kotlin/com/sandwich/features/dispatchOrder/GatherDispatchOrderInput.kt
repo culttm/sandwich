@@ -7,7 +7,7 @@ import com.sandwich.features.Order
 // ══════════════════════════════════════════════════════════════
 
 fun GatherDispatchOrderInput(
-    readOrder: (String) -> Order?
-): (String) -> DispatchOrderInput = { orderId ->
+    readOrder: suspend (String) -> Order?
+): suspend (String) -> DispatchOrderInput = { orderId ->
     DispatchOrderInput(order = readOrder(orderId))
 }

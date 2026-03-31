@@ -8,11 +8,11 @@ import java.time.Instant
 // ══════════════════════════════════════════════════════════════
 
 fun GatherPayOrderInput(
-    readOrder: (String) -> Order?,
-    readStock: () -> Map<String, Int>,
+    readOrder: suspend (String) -> Order?,
+    readStock: suspend () -> Map<String, Int>,
     now: () -> Instant,
     generateTransactionId: () -> String
-): (String, PayOrderRequest) -> PayOrderInput = { orderId, request ->
+): suspend (String, PayOrderRequest) -> PayOrderInput = { orderId, request ->
     PayOrderInput(
         order = readOrder(orderId),
         stock = readStock(),

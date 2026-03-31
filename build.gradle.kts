@@ -33,6 +33,10 @@ dependencies {
     // Coroutines
     implementation(libs.coroutines.core)
 
+    // MongoDB
+    implementation(libs.mongodb.driver)
+    implementation(libs.mongodb.bson.kotlinx)
+
     // Logging
     implementation(libs.logback)
 
@@ -41,6 +45,8 @@ dependencies {
     testImplementation(libs.ktor.client.content.negotiation)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.testcontainers.mongodb)
+    testImplementation(libs.testcontainers.junit)
 }
 
 tasks.test {

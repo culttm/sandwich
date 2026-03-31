@@ -29,14 +29,14 @@ data class CreateOrderResponse(val orderId: String, val total: Int)
 fun Route.createOrderRoute(db: Db) = createOrderRoute(
     CreateOrderHandler(
         gatherInput = GatherCreateOrderInput(
-            readMenu = { db.sandwiches.toMap() },
-            readExtras = { db.extras.toMap() },
+            readMenu = { db.allSandwiches() },
+            readExtras = { db.allExtras() },
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
         decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
-            storeOrder = { order -> db.orders[order.id] = order }
+            storeOrder = { order -> db.saveOrder(order) }
         )
     )
 )

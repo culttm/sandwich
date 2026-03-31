@@ -20,11 +20,11 @@ data class DispatchResponse(val orderId: String, val status: String)
 fun Route.dispatchOrderRoute(db: Db) = dispatchOrderRoute(
     DispatchOrderHandler(
         gatherInput = GatherDispatchOrderInput(
-            readOrder = { id -> db.orders[id] }
+            readOrder = { id -> db.findOrder(id) }
         ),
         decide = ::dispatchOrder,
         produceOutput = ProduceDispatchOrderOutput(
-            storeOrder = { order -> db.orders[order.id] = order }
+            storeOrder = { order -> db.saveOrder(order) }
         )
     )
 )

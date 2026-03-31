@@ -8,9 +8,9 @@ import java.time.Instant
 // ══════════════════════════════════════════════════════════════
 
 fun GatherCancelOrderInput(
-    readOrder: (String) -> Order?,
+    readOrder: suspend (String) -> Order?,
     now: () -> Instant
-): (String) -> CancelOrderInput = { orderId ->
+): suspend (String) -> CancelOrderInput = { orderId ->
     CancelOrderInput(
         order = readOrder(orderId),
         now = now()

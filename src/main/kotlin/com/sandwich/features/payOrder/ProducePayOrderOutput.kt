@@ -10,8 +10,8 @@ import com.sandwich.features.orderError
 // ══════════════════════════════════════════════════════════════
 
 fun ProducePayOrderOutput(
-    storeOrder: (Order) -> Unit,
-    reduceStock: (Map<String, Int>) -> Unit
+    storeOrder: suspend (Order) -> Unit,
+    reduceStock: suspend (Map<String, Int>) -> Unit
 ): suspend (PayOrderDecision) -> PayOrderResponse = { decision ->
     when (decision) {
         is PayOrderDecision.Paid -> {

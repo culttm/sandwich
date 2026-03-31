@@ -10,7 +10,7 @@ import com.sandwich.features.orderError
 // ══════════════════════════════════════════════════════════════
 
 fun ProduceCompleteDeliveryOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (CompleteDeliveryDecision) -> CompleteDeliveryResponse = { decision ->
     when (decision) {
         is CompleteDeliveryDecision.Delivered -> {

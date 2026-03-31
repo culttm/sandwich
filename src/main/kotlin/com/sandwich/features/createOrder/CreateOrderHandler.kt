@@ -5,7 +5,7 @@ package com.sandwich.features.createOrder
 // ══════════════════════════════════════════════════════════════
 
 fun CreateOrderHandler(
-    gatherInput: (CreateOrderRequest) -> CreateOrderInput,
+    gatherInput: suspend (CreateOrderRequest) -> CreateOrderInput,
     decide: (CreateOrderInput) -> CreateOrderDecision,
     produceOutput: suspend (CreateOrderDecision) -> CreateOrderResponse
 ): suspend (CreateOrderRequest) -> CreateOrderResponse = { request ->

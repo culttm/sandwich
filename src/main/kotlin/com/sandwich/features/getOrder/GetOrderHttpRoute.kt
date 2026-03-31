@@ -15,7 +15,7 @@ import io.ktor.server.routing.*
 // ── Route (wiring) ──
 
 fun Route.getOrderRoute(db: Db) = getOrderRoute(
-    handler = { orderId -> db.orders[orderId] ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено") }
+    handler = { orderId -> db.findOrder(orderId) ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено") }
 )
 
 // ── Route (HTTP) ──

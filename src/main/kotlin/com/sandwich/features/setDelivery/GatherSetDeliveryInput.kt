@@ -7,8 +7,8 @@ import com.sandwich.features.Order
 // ══════════════════════════════════════════════════════════════
 
 fun GatherSetDeliveryInput(
-    readOrder: (String) -> Order?
-): (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
+    readOrder: suspend (String) -> Order?
+): suspend (String, SetDeliveryRequest) -> SetDeliveryInput = { orderId, request ->
     SetDeliveryInput(
         order = readOrder(orderId),
         address = request.address,

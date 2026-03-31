@@ -21,16 +21,14 @@ data class CancelResponse(val orderId: String, val status: String, val refund: B
 fun Route.cancelOrderRoute(db: Db) = cancelOrderRoute(
     CancelOrderHandler(
         gatherInput = GatherCancelOrderInput(
-            readOrder = { id -> db.orders[id] },
+            readOrder = { id -> db.findOrder(id) },
             now = Instant::now
         ),
         decide = ::cancelOrder,
         produceOutput = ProduceCancelOrderOutput(
-            storeOrder = { order -> db.orders[order.id] = order },
+            storeOrder = { order -> db.saveOrder(order) },
             releaseStock = { stock ->
-                stock.forEach { (id, qty) ->
-                    db.stock.compute(id) { _, current -> (current ?: 0) + qty }
-                }
+                stock.forEach { (id, qty) -> db.adjustStock(id, qty) }
             }
         )
     )

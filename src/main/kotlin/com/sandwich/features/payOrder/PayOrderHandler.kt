@@ -5,7 +5,7 @@ package com.sandwich.features.payOrder
 // ══════════════════════════════════════════════════════════════
 
 fun PayOrderHandler(
-    gatherInput: (String, PayOrderRequest) -> PayOrderInput,
+    gatherInput: suspend (String, PayOrderRequest) -> PayOrderInput,
     decide: (PayOrderInput) -> PayOrderDecision,
     produceOutput: suspend (PayOrderDecision) -> PayOrderResponse
 ): suspend (String, PayOrderRequest) -> PayOrderResponse = { orderId, request ->

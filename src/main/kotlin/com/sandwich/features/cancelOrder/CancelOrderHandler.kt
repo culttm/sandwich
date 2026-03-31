@@ -5,7 +5,7 @@ package com.sandwich.features.cancelOrder
 // ══════════════════════════════════════════════════════════════
 
 fun CancelOrderHandler(
-    gatherInput: (String) -> CancelOrderInput,
+    gatherInput: suspend (String) -> CancelOrderInput,
     decide: (CancelOrderInput) -> CancelOrderDecision,
     produceOutput: suspend (CancelOrderDecision) -> CancelResponse
 ): suspend (String) -> CancelResponse = { orderId ->

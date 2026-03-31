@@ -32,11 +32,11 @@ data class SetDeliveryResponse(
 fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
     SetDeliveryHandler(
         gatherInput = GatherSetDeliveryInput(
-            readOrder = { id -> db.orders[id] }
+            readOrder = { id -> db.findOrder(id) }
         ),
         decide = ::setDelivery,
         produceOutput = ProduceSetDeliveryOutput(
-            storeOrder = { order -> db.orders[order.id] = order }
+            storeOrder = { order -> db.saveOrder(order) }
         )
     )
 )

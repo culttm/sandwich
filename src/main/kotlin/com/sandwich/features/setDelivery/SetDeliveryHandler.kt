@@ -5,7 +5,7 @@ package com.sandwich.features.setDelivery
 // ══════════════════════════════════════════════════════════════
 
 fun SetDeliveryHandler(
-    gatherInput: (String, SetDeliveryRequest) -> SetDeliveryInput,
+    gatherInput: suspend (String, SetDeliveryRequest) -> SetDeliveryInput,
     decide: (SetDeliveryInput) -> SetDeliveryDecision,
     produceOutput: suspend (SetDeliveryDecision) -> SetDeliveryResponse
 ): suspend (String, SetDeliveryRequest) -> SetDeliveryResponse = { orderId, request ->

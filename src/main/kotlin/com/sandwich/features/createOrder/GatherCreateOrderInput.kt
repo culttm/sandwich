@@ -8,11 +8,11 @@ import java.time.Instant
 // ══════════════════════════════════════════════════════════════
 
 fun GatherCreateOrderInput(
-    readMenu: () -> Map<String, CatalogItem>,
-    readExtras: () -> Map<String, CatalogItem>,
+    readMenu: suspend () -> Map<String, CatalogItem>,
+    readExtras: suspend () -> Map<String, CatalogItem>,
     generateId: () -> String,
     now: () -> Instant
-): (CreateOrderRequest) -> CreateOrderInput = { request ->
+): suspend (CreateOrderRequest) -> CreateOrderInput = { request ->
     CreateOrderInput(
         orderId = generateId(),
         customerName = request.customerName,

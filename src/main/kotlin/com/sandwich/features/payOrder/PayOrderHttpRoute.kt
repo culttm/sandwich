@@ -31,18 +31,16 @@ data class PayOrderResponse(
 fun Route.payOrderRoute(db: Db) = payOrderRoute(
     PayOrderHandler(
         gatherInput = GatherPayOrderInput(
-            readOrder = { id -> db.orders[id] },
-            readStock = { db.stock.toMap() },
+            readOrder = { id -> db.findOrder(id) },
+            readStock = { db.allStock() },
             now = Instant::now,
             generateTransactionId = { UUID.randomUUID().toString() }
         ),
         decide = ::payOrder,
         produceOutput = ProducePayOrderOutput(
-            storeOrder = { order -> db.orders[order.id] = order },
+            storeOrder = { order -> db.saveOrder(order) },
             reduceStock = { reductions ->
-                reductions.forEach { (id, qty) ->
-                    db.stock.compute(id) { _, current -> (current ?: 0) - qty }
-                }
+                reductions.forEach { (id, qty) -> db.adjustStock(id, -qty) }
             }
         )
     )

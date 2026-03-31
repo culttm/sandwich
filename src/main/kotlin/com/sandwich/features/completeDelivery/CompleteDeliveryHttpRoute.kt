@@ -20,11 +20,11 @@ data class CompleteDeliveryResponse(val orderId: String, val status: String)
 fun Route.completeDeliveryRoute(db: Db) = completeDeliveryRoute(
     CompleteDeliveryHandler(
         gatherInput = GatherCompleteDeliveryInput(
-            readOrder = { id -> db.orders[id] }
+            readOrder = { id -> db.findOrder(id) }
         ),
         decide = ::completeDelivery,
         produceOutput = ProduceCompleteDeliveryOutput(
-            storeOrder = { order -> db.orders[order.id] = order }
+            storeOrder = { order -> db.saveOrder(order) }
         )
     )
 )
