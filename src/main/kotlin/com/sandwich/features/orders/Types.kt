@@ -1,6 +1,6 @@
 package com.sandwich.features.orders
 
-import com.sandwich.common.domain.ExtraItem
+import com.sandwich.features.menu.ExtraItem
 import kotlinx.serialization.Serializable
 
 // ── Order lifecycle ──

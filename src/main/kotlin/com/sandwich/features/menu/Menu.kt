@@ -1,8 +1,22 @@
 package com.sandwich.features.menu
 
-import com.sandwich.common.domain.ExtraItem
-import com.sandwich.common.domain.MenuItem
 import kotlinx.serialization.Serializable
+
+// ── Catalog types (owned by menu, referenced by other features) ──
+
+@Serializable
+data class MenuItem(
+    val id: String,
+    val name: String,
+    val price: Int
+)
+
+@Serializable
+data class ExtraItem(
+    val id: String,
+    val name: String,
+    val price: Int
+)
 
 @Serializable
 data class Menu(
