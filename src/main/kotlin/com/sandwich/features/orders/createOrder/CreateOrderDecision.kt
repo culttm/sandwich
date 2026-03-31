@@ -1,7 +1,7 @@
 package com.sandwich.features.orders.createOrder
 
-import com.sandwich.features.menu.ExtraItem
-import com.sandwich.features.menu.MenuItem
+import com.sandwich.features.orders.ExtraItem
+import com.sandwich.features.orders.MenuItem
 import com.sandwich.features.orders.Order
 import com.sandwich.features.orders.OrderLine
 import com.sandwich.features.orders.OrderStatus

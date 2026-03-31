@@ -1,6 +1,6 @@
-package com.sandwich.features.menu.getMenu
+package com.sandwich.features.orders.getMenu
 
-import com.sandwich.features.menu.Menu
+import com.sandwich.features.orders.Menu
 import com.sandwich.common.infra.Db
 import io.ktor.http.*
 import io.ktor.server.response.*

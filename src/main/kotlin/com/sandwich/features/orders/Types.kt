@@ -1,7 +1,28 @@
 package com.sandwich.features.orders
 
-import com.sandwich.features.menu.ExtraItem
 import kotlinx.serialization.Serializable
+
+// ── Catalog ──
+
+@Serializable
+data class MenuItem(
+    val id: String,
+    val name: String,
+    val price: Int
+)
+
+@Serializable
+data class ExtraItem(
+    val id: String,
+    val name: String,
+    val price: Int
+)
+
+@Serializable
+data class Menu(
+    val sandwiches: List<MenuItem>,
+    val extras: List<ExtraItem>
+)
 
 // ── Order lifecycle ──
 

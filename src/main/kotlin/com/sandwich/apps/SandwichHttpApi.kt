@@ -7,7 +7,7 @@ import com.sandwich.common.http.configureErrorHandling
 import com.sandwich.features.orders.orderErrorHandling
 import com.sandwich.common.http.configureMonitoring
 import com.sandwich.common.http.configureSerialization
-import com.sandwich.features.menu.getMenu.getMenuRoute
+import com.sandwich.features.orders.getMenu.getMenuRoute
 import com.sandwich.features.orders.cancelOrder.cancelOrderRoute
 import com.sandwich.features.orders.completeDelivery.completeDeliveryRoute
 import com.sandwich.features.orders.createOrder.createOrderRoute
