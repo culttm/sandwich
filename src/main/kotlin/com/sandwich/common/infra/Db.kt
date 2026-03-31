@@ -1,8 +1,8 @@
 package com.sandwich.common.infra
 
-import com.sandwich.features.orders.ExtraItem
-import com.sandwich.features.orders.MenuItem
-import com.sandwich.features.orders.Order
+import com.sandwich.features.ExtraItem
+import com.sandwich.features.MenuItem
+import com.sandwich.features.Order
 import java.util.concurrent.ConcurrentHashMap
 
 /**
