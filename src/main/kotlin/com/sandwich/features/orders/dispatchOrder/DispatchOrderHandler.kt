@@ -6,8 +6,8 @@ package com.sandwich.features.orders.dispatchOrder
 
 fun DispatchOrderHandler(
     gatherInput: (String) -> DispatchOrderInput,
-    decide: (DispatchOrderInput) -> DispatchDecision,
-    produceOutput: suspend (DispatchDecision) -> DispatchResponse
+    decide: (DispatchOrderInput) -> DispatchOrderDecision,
+    produceOutput: suspend (DispatchOrderDecision) -> DispatchResponse
 ): suspend (String) -> DispatchResponse = { orderId ->
     val input = gatherInput(orderId)
     val decision = decide(input)

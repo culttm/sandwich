@@ -34,7 +34,7 @@ fun Route.setDeliveryRoute(db: Db) = setDeliveryRoute(
         gatherInput = GatherSetDeliveryInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideDelivery,
+        decide = ::setDelivery,
         produceOutput = ProduceSetDeliveryOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

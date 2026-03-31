@@ -104,7 +104,7 @@ Then anything injecting this repository becomes `suspend` → impure.
 // Edge (suspend)
 val stock = inventoryRepo.checkStock(ids)
 // Pure (not suspend)
-val decision = buildOrder(stock, request)
+val decision = createOrder(stock, request)
 ```
 
 ## Review Process

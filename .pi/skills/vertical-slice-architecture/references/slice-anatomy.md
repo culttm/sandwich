@@ -77,7 +77,7 @@ fun Route.createOrderRoute(db: Db) = createOrderRoute(
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
-        decide = ::buildOrder,
+        decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )
@@ -111,7 +111,7 @@ sealed interface CreateOrderDecision {
     data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
-fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
+fun createOrder(input: CreateOrderInput): CreateOrderDecision {
     if (input.customerName.isBlank()) return CreateOrderDecision.BlankName("Name required")
     if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder("Order must have items")
     // ... pure logic ...
@@ -199,14 +199,14 @@ Does the slice have business logic?
 @Test
 fun `blank name is rejected`() {
     val input = createOrderInput(customerName = "  ")
-    val decision = buildOrder(input)
+    val decision = createOrder(input)
     assertIs<CreateOrderDecision.BlankName>(decision)
 }
 
 @Test
 fun `valid order calculates discount for 3+ items`() {
     val input = createOrderInput(items = listOf(item("p1"), item("p2"), item("p3")))
-    val decision = buildOrder(input)
+    val decision = createOrder(input)
     assertIs<CreateOrderDecision.Created>(decision)
     assertTrue(decision.order.discount > 0)
 }

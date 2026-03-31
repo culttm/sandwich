@@ -56,7 +56,7 @@ data class AssignShippingResponse(val orderId: String, val shippingFee: Int, val
 fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
     AssignShippingHandler(
         gatherInput = GatherAssignShippingInput(readOrder = { id -> db.orders[id] }),
-        decide = ::decideShipping,
+        decide = ::assignShipping,
         produceOutput = ProduceAssignShippingOutput(storeOrder = { order -> db.orders[order.id] = order })
     )
 )
@@ -88,7 +88,7 @@ sealed interface AssignShippingDecision {
     data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
 }
 
-fun decideShipping(input: AssignShippingInput): AssignShippingDecision { /* pure */ }
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision { /* pure */ }
 ```
 
 ### Query slice (simple — no sandwich needed)

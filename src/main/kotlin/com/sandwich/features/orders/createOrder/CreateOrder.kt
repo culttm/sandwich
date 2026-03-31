@@ -34,7 +34,7 @@ fun Route.createOrderRoute(db: Db) = createOrderRoute(
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
-        decide = ::buildOrder,
+        decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

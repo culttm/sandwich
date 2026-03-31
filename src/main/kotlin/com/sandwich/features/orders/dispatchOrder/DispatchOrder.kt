@@ -22,7 +22,7 @@ fun Route.dispatchOrderRoute(db: Db) = dispatchOrderRoute(
         gatherInput = GatherDispatchOrderInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideDispatch,
+        decide = ::dispatchOrder,
         produceOutput = ProduceDispatchOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

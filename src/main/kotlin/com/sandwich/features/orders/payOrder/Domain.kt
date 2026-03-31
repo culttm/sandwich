@@ -28,7 +28,7 @@ sealed interface PayOrderDecision {
 
 // ── Pure logic ──
 
-fun decidePayment(input: PayOrderInput): PayOrderDecision {
+fun payOrder(input: PayOrderInput): PayOrderDecision {
     val order = input.order
 
     if (order == null)

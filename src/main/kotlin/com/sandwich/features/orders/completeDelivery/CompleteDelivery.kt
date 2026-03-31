@@ -22,7 +22,7 @@ fun Route.completeDeliveryRoute(db: Db) = completeDeliveryRoute(
         gatherInput = GatherCompleteDeliveryInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideComplete,
+        decide = ::completeDelivery,
         produceOutput = ProduceCompleteDeliveryOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

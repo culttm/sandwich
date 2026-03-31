@@ -32,7 +32,7 @@ class SetDeliveryLogicTest {
 
     @Test
     fun `DRAFT order gets delivery and becomes AWAITING_PAYMENT`() {
-        val result = decideDelivery(input())
+        val result = setDelivery(input())
 
         assertIs<SetDeliveryDecision.DeliverySet>(result)
         assertEquals(OrderStatus.AWAITING_PAYMENT, result.order.status)
@@ -45,7 +45,7 @@ class SetDeliveryLogicTest {
 
     @Test
     fun `order over 500 gets free delivery`() {
-        val result = decideDelivery(input(order = draftOrder(subtotal = 600)))
+        val result = setDelivery(input(order = draftOrder(subtotal = 600)))
 
         assertIs<SetDeliveryDecision.DeliverySet>(result)
         assertEquals(0, result.order.deliveryFee)
@@ -54,7 +54,7 @@ class SetDeliveryLogicTest {
 
     @Test
     fun `preferred delivery time is saved`() {
-        val result = decideDelivery(input(deliveryTime = "14:00"))
+        val result = setDelivery(input(deliveryTime = "14:00"))
 
         assertIs<SetDeliveryDecision.DeliverySet>(result)
         assertEquals("14:00", result.order.delivery!!.deliveryTime)
@@ -64,7 +64,7 @@ class SetDeliveryLogicTest {
 
     @Test
     fun `null order returns NotFound`() {
-        val result = decideDelivery(input(order = null))
+        val result = setDelivery(input(order = null))
 
         assertIs<SetDeliveryDecision.NotFound>(result)
     }
@@ -73,7 +73,7 @@ class SetDeliveryLogicTest {
     fun `non-DRAFT order returns WrongStatus`() {
         val order = draftOrder().copy(status = OrderStatus.AWAITING_PAYMENT)
 
-        val result = decideDelivery(input(order = order))
+        val result = setDelivery(input(order = order))
 
         assertIs<SetDeliveryDecision.WrongStatus>(result)
         assertEquals(OrderStatus.AWAITING_PAYMENT, result.current)
@@ -81,14 +81,14 @@ class SetDeliveryLogicTest {
 
     @Test
     fun `blank address returns BlankAddress`() {
-        val result = decideDelivery(input(address = "  "))
+        val result = setDelivery(input(address = "  "))
 
         assertIs<SetDeliveryDecision.BlankAddress>(result)
     }
 
     @Test
     fun `blank phone returns BlankPhone`() {
-        val result = decideDelivery(input(phone = ""))
+        val result = setDelivery(input(phone = ""))
 
         assertIs<SetDeliveryDecision.BlankPhone>(result)
     }

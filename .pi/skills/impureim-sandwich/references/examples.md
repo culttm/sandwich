@@ -22,7 +22,7 @@ sealed interface CreateOrderDecision {
     data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
-fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
+fun createOrder(input: CreateOrderInput): CreateOrderDecision {
     if (input.customerName.isBlank()) return CreateOrderDecision.BlankName()
     if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder()
 
@@ -105,7 +105,7 @@ fun Route.createOrderRoute(db: Db) = createOrderRoute(
             generateId = { UUID.randomUUID().toString() },
             now = Instant::now
         ),
-        decide = ::buildOrder,
+        decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )
@@ -126,7 +126,7 @@ fun Route.createOrderRoute(handler: suspend (CreateOrderRequest) -> CreateOrderR
 @Test
 fun `blank name is rejected`() {
     val input = createOrderInput(customerName = "  ")
-    val decision = buildOrder(input)
+    val decision = createOrder(input)
     assertIs<CreateOrderDecision.BlankName>(decision)
 }
 
@@ -136,7 +136,7 @@ fun `valid order is created with discount`() {
         items = listOf(item("p1"), item("p2"), item("p3")),
         catalog = mapOf("p1" to product(100), "p2" to product(150), "p3" to product(200))
     )
-    val decision = buildOrder(input)
+    val decision = createOrder(input)
     assertIs<CreateOrderDecision.Created>(decision)
     assertEquals(450, decision.order.subtotal)
     assertTrue(decision.order.discount > 0)
@@ -164,7 +164,7 @@ sealed interface CancelOrderDecision {
     data class TooLate(val message: String) : CancelOrderDecision
 }
 
-fun decideCancellation(input: CancelOrderInput): CancelOrderDecision {
+fun cancelOrder(input: CancelOrderInput): CancelOrderDecision {
     val order = input.order ?: return CancelOrderDecision.NotFound
     if (order.status == OrderStatus.CANCELLED) return CancelOrderDecision.WrongStatus(order.status)
     if (order.status == OrderStatus.DELIVERED) return CancelOrderDecision.TooLate("Already delivered")
@@ -216,18 +216,18 @@ Query slices don't need the 3-phase decomposition — they're simple reads.
 │  ┌──────────────────────────────────────────────────┐   │
 │  │  Pure Core (Domain.kt)                           │   │
 │  │                                                  │   │
-│  │  buildOrder(input) → CreateOrderDecision          │   │
-│  │  decideShipping(input) → AssignShippingDecision   │   │
-│  │  decideCancellation(input) → CancelOrderDecision  │   │
+│  │  createOrder(input) → CreateOrderDecision          │   │
+│  │  assignShipping(input) → AssignShippingDecision   │   │
+│  │  cancelOrder(input) → CancelOrderDecision  │   │
 │  │  calculateShippingFee(subtotal) → Int             │   │
 │  │  calculateDiscount(count, subtotal) → Int         │   │
 │  └──────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────┘
 ```
 
-**Hexagonal test:** can I test `buildOrder` without DB, without HTTP, without mocks?
+**Hexagonal test:** can I test `createOrder` without DB, without HTTP, without mocks?
 
 ```kotlin
 val input = CreateOrderInput(items = listOf(...), catalog = mapOf(...))
-val decision = buildOrder(input)  // works — pure data in, decision out
+val decision = createOrder(input)  // works — pure data in, decision out
 ```

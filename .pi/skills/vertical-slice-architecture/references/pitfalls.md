@@ -51,7 +51,7 @@ How to spot when Vertical Slice Architecture is breaking down.
 
 ```kotlin
 // ❌ orders/cancelOrder/CancelOrder.kt
-import com.example.features.orders.createOrder.buildOrder  // importing from another slice!
+import com.example.features.orders.createOrder.createOrder  // importing from another slice!
 ```
 
 **Fix:** extract shared logic into `common/domain/` as a pure function.

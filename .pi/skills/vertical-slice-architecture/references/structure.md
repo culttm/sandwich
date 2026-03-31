@@ -58,7 +58,7 @@ src/main/kotlin/com/example/
 | Handler | `{SliceName}Handler.kt` | `CreateOrderHandler.kt` |
 | GatherInput | `Gather{SliceName}Input.kt` | `GatherCreateOrderInput.kt` |
 | ProduceOutput | `Produce{SliceName}Output.kt` | `ProduceCreateOrderOutput.kt` |
-| Pure logic function | camelCase | `fun buildOrder(...)` |
+| Pure logic function | `fun {sliceName}(input)` | `fun createOrder(input)` |
 | Sealed decision | PascalCase + "Decision" | `sealed interface CreateOrderDecision` |
 | Input type | PascalCase + "Input" | `data class CreateOrderInput(...)` |
 | Request DTO | Slice name + "Request" | `data class CreateOrderRequest(...)` |
@@ -136,7 +136,7 @@ orders/createOrder/
 ```
 
 ### Step 3: Extract pure logic into Domain.kt
-Move validation, calculations, branching into a pure `fun buildOrder(input): Decision`.
+Move validation, calculations, branching into a pure `fun createOrder(input): Decision`.
 
 ### Step 4: Extract IO phases
 GatherInput collects data, ProduceOutput persists + maps errors.

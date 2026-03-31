@@ -27,7 +27,7 @@ sealed interface SetDeliveryDecision {
 
 // ── Pure logic ──
 
-fun decideDelivery(input: SetDeliveryInput): SetDeliveryDecision {
+fun setDelivery(input: SetDeliveryInput): SetDeliveryDecision {
     val order = input.order
 
     if (order == null)

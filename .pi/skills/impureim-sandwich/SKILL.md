@@ -67,7 +67,7 @@ fun GatherAssignShippingInput(
 Pure function. No `suspend`. Takes data, returns sealed decision.
 
 ```kotlin
-fun decideShipping(input: AssignShippingInput): AssignShippingDecision {
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision {
     val order = input.order
         ?: return AssignShippingDecision.NotFound
     if (order.status != OrderStatus.DRAFT)
@@ -131,7 +131,7 @@ fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
         gatherInput = GatherAssignShippingInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideShipping,
+        decide = ::assignShipping,
         produceOutput = ProduceAssignShippingOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )
@@ -191,7 +191,7 @@ fun BuildOrder(
 ### ✅ Pass values, not functions
 ```kotlin
 // RIGHT: accepts data, returns decision
-fun buildOrder(
+fun createOrder(
     stock: Map<ProductId, Int>,
     request: Request
 ): Decision { /* pure */ }

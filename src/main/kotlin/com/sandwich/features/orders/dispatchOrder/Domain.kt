@@ -13,24 +13,24 @@ data class DispatchOrderInput(val order: Order?)
 
 // ── Рішення (результат чистої функції) ──
 
-sealed interface DispatchDecision {
-    data class Dispatched(val order: Order) : DispatchDecision
-    data object NotFound : DispatchDecision
-    data class WrongStatus(val current: OrderStatus) : DispatchDecision
+sealed interface DispatchOrderDecision {
+    data class Dispatched(val order: Order) : DispatchOrderDecision
+    data object NotFound : DispatchOrderDecision
+    data class WrongStatus(val current: OrderStatus) : DispatchOrderDecision
 }
 
 // ── Pure logic ──
 
-fun decideDispatch(input: DispatchOrderInput): DispatchDecision {
+fun dispatchOrder(input: DispatchOrderInput): DispatchOrderDecision {
     val order = input.order
 
     if (order == null)
-        return DispatchDecision.NotFound
+        return DispatchOrderDecision.NotFound
 
     if (order.status != OrderStatus.PREPARING)
-        return DispatchDecision.WrongStatus(order.status)
+        return DispatchOrderDecision.WrongStatus(order.status)
 
-    return DispatchDecision.Dispatched(
+    return DispatchOrderDecision.Dispatched(
         order.copy(status = OrderStatus.OUT_FOR_DELIVERY)
     )
 }

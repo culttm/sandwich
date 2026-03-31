@@ -36,7 +36,7 @@ fun Route.payOrderRoute(db: Db) = payOrderRoute(
             now = Instant::now,
             generateTransactionId = { UUID.randomUUID().toString() }
         ),
-        decide = ::decidePayment,
+        decide = ::payOrder,
         produceOutput = ProducePayOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order },
             reduceStock = { reductions ->

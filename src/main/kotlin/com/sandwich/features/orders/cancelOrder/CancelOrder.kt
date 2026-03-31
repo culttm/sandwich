@@ -24,7 +24,7 @@ fun Route.cancelOrderRoute(db: Db) = cancelOrderRoute(
             readOrder = { id -> db.orders[id] },
             now = Instant::now
         ),
-        decide = ::decideCancellation,
+        decide = ::cancelOrder,
         produceOutput = ProduceCancelOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order },
             releaseStock = { stock ->

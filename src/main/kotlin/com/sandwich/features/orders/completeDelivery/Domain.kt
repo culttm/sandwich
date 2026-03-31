@@ -21,7 +21,7 @@ sealed interface CompleteDeliveryDecision {
 
 // ── Pure logic ──
 
-fun decideComplete(input: CompleteDeliveryInput): CompleteDeliveryDecision {
+fun completeDelivery(input: CompleteDeliveryInput): CompleteDeliveryDecision {
     val order = input.order
 
     if (order == null)

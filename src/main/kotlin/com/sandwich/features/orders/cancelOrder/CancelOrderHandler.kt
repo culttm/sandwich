@@ -6,8 +6,8 @@ package com.sandwich.features.orders.cancelOrder
 
 fun CancelOrderHandler(
     gatherInput: (String) -> CancelOrderInput,
-    decide: (CancelOrderInput) -> CancelDecision,
-    produceOutput: suspend (CancelDecision) -> CancelResponse
+    decide: (CancelOrderInput) -> CancelOrderDecision,
+    produceOutput: suspend (CancelOrderDecision) -> CancelResponse
 ): suspend (String) -> CancelResponse = { orderId ->
     val input = gatherInput(orderId)
     val decision = decide(input)

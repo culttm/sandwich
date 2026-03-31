@@ -40,7 +40,7 @@ sealed interface CreateOrderDecision {
 }
 
 // 🟢 Pure: takes data, returns decision — NO suspend, NO repo
-fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
+fun createOrder(input: CreateOrderInput): CreateOrderDecision {
     val missing = input.items.filter { (input.stock[it.productId] ?: 0) < it.quantity }
     if (missing.isNotEmpty()) return OutOfStock(missing.map { it.productId })
     return Fulfillable(Order(input.items, calculateTotal(input)))
@@ -105,7 +105,7 @@ fun Route.createOrderRoute(db: Db) = createOrderRoute(
             readStock = { ids -> db.stock.filterKeys { it in ids } },
             readPrices = { ids -> db.prices.filterKeys { it in ids } }
         ),
-        decide = ::buildOrder,
+        decide = ::createOrder,
         produceOutput = ProduceCreateOrderOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

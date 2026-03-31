@@ -41,7 +41,7 @@ sealed interface CreateOrderDecision {
 
 // ── Pure logic ──
 
-fun buildOrder(input: CreateOrderInput): CreateOrderDecision {
+fun createOrder(input: CreateOrderInput): CreateOrderDecision {
     if (input.customerName.isBlank())
         return CreateOrderDecision.BlankName()
 

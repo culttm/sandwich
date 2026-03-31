@@ -53,7 +53,7 @@ sealed interface AssignShippingDecision {
 }
 
 // ── Pure logic (NOT suspend) ──
-fun decideShipping(input: AssignShippingInput): AssignShippingDecision {
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision {
     val order = input.order ?: return AssignShippingDecision.NotFound
     if (order.status != OrderStatus.DRAFT) return AssignShippingDecision.WrongStatus(order.status)
     if (input.address.isBlank()) return AssignShippingDecision.BlankAddress
@@ -124,7 +124,7 @@ fun Route.assignShippingRoute(db: Db) = assignShippingRoute(
         gatherInput = GatherAssignShippingInput(
             readOrder = { id -> db.orders[id] }
         ),
-        decide = ::decideShipping,
+        decide = ::assignShipping,
         produceOutput = ProduceAssignShippingOutput(
             storeOrder = { order -> db.orders[order.id] = order }
         )

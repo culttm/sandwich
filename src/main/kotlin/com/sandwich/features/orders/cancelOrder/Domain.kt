@@ -18,16 +18,16 @@ data class CancelOrderInput(
 
 // ── Рішення (результат чистої функції) ──
 
-sealed interface CancelDecision {
+sealed interface CancelOrderDecision {
     data class Cancelled(
         val order: Order,
         val releaseStock: Map<String, Int>,  // sandwichId → кількість до повернення
         val refund: Boolean                  // чи потрібен refund
-    ) : CancelDecision
-    data object NotFound : CancelDecision
-    data class AlreadyCancelled(val orderId: String) : CancelDecision
-    data class TooLate(val status: OrderStatus) : CancelDecision
-    data class WindowExpired(val maxMinutes: Long) : CancelDecision
+    ) : CancelOrderDecision
+    data object NotFound : CancelOrderDecision
+    data class AlreadyCancelled(val orderId: String) : CancelOrderDecision
+    data class TooLate(val status: OrderStatus) : CancelOrderDecision
+    data class WindowExpired(val maxMinutes: Long) : CancelOrderDecision
 }
 
 // ── Pure logic ──
@@ -40,21 +40,21 @@ private val CANCELLABLE_STATUSES = setOf(
     OrderStatus.PREPARING
 )
 
-fun decideCancellation(input: CancelOrderInput): CancelDecision {
+fun cancelOrder(input: CancelOrderInput): CancelOrderDecision {
     val order = input.order
 
     if (order == null)
-        return CancelDecision.NotFound
+        return CancelOrderDecision.NotFound
 
     if (order.status == OrderStatus.CANCELLED)
-        return CancelDecision.AlreadyCancelled(order.id)
+        return CancelOrderDecision.AlreadyCancelled(order.id)
 
     if (order.status !in CANCELLABLE_STATUSES)
-        return CancelDecision.TooLate(order.status)
+        return CancelOrderDecision.TooLate(order.status)
 
     val elapsed = Duration.between(Instant.parse(order.createdAt), input.now)
     if (elapsed.toMinutes() > CANCEL_WINDOW_MINUTES)
-        return CancelDecision.WindowExpired(CANCEL_WINDOW_MINUTES)
+        return CancelOrderDecision.WindowExpired(CANCEL_WINDOW_MINUTES)
 
     // Якщо замовлення було оплачене (PREPARING) → release stock + refund
     val wasPaid = order.payment != null
@@ -64,7 +64,7 @@ fun decideCancellation(input: CancelOrderInput): CancelDecision {
         emptyMap()
     }
 
-    return CancelDecision.Cancelled(
+    return CancelOrderDecision.Cancelled(
         order = order.copy(status = OrderStatus.CANCELLED),
         releaseStock = stockToRelease,
         refund = wasPaid

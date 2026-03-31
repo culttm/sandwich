@@ -11,15 +11,15 @@ import com.sandwich.features.orders.orderError
 
 fun ProduceDispatchOrderOutput(
     storeOrder: (Order) -> Unit
-): suspend (DispatchDecision) -> DispatchResponse = { decision ->
+): suspend (DispatchOrderDecision) -> DispatchResponse = { decision ->
     when (decision) {
-        is DispatchDecision.Dispatched -> {
+        is DispatchOrderDecision.Dispatched -> {
             storeOrder(decision.order)
             DispatchResponse(orderId = decision.order.id, status = "OUT_FOR_DELIVERY")
         }
-        is DispatchDecision.NotFound ->
+        is DispatchOrderDecision.NotFound ->
             orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
-        is DispatchDecision.WrongStatus ->
+        is DispatchOrderDecision.WrongStatus ->
             orderError(WRONG_STATUS, "Очікується PREPARING, поточний статус: ${decision.current}")
     }
 }

@@ -46,7 +46,7 @@ class PayOrderLogicTest {
     fun `card payment transitions to PREPARING and reserves stock`() {
         val order = awaitingOrder("classic-club", "blt")
 
-        val result = decidePayment(input(order = order))
+        val result = payOrder(input(order = order))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(OrderStatus.PREPARING, result.order.status)
@@ -58,7 +58,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `cash on delivery also works`() {
-        val result = decidePayment(input(method = PaymentMethod.CASH_ON_DELIVERY))
+        val result = payOrder(input(method = PaymentMethod.CASH_ON_DELIVERY))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(PaymentMethod.CASH_ON_DELIVERY, result.order.payment!!.method)
@@ -68,7 +68,7 @@ class PayOrderLogicTest {
     fun `two identical sandwiches reduce stock by 2`() {
         val order = awaitingOrder("classic-club", "classic-club")
 
-        val result = decidePayment(input(order = order))
+        val result = payOrder(input(order = order))
 
         assertIs<PayOrderDecision.Paid>(result)
         assertEquals(mapOf("classic-club" to 2), result.stockReductions)
@@ -78,7 +78,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `null order returns NotFound`() {
-        val result = decidePayment(input(order = null))
+        val result = payOrder(input(order = null))
 
         assertIs<PayOrderDecision.NotFound>(result)
     }
@@ -87,7 +87,7 @@ class PayOrderLogicTest {
     fun `non-AWAITING_PAYMENT returns WrongStatus`() {
         val order = awaitingOrder("classic-club").copy(status = OrderStatus.DRAFT)
 
-        val result = decidePayment(input(order = order))
+        val result = payOrder(input(order = order))
 
         assertIs<PayOrderDecision.WrongStatus>(result)
         assertEquals(OrderStatus.DRAFT, result.current)
@@ -95,7 +95,7 @@ class PayOrderLogicTest {
 
     @Test
     fun `zero stock returns OutOfStock`() {
-        val result = decidePayment(input(stock = mapOf("classic-club" to 0)))
+        val result = payOrder(input(stock = mapOf("classic-club" to 0)))
 
         assertIs<PayOrderDecision.OutOfStock>(result)
         assertEquals(listOf("classic-club"), result.unavailable)
@@ -105,7 +105,7 @@ class PayOrderLogicTest {
     fun `insufficient stock for quantity returns OutOfStock`() {
         val order = awaitingOrder("classic-club", "classic-club", "classic-club")
 
-        val result = decidePayment(input(order = order, stock = mapOf("classic-club" to 2)))
+        val result = payOrder(input(order = order, stock = mapOf("classic-club" to 2)))
 
         assertIs<PayOrderDecision.OutOfStock>(result)
     }
