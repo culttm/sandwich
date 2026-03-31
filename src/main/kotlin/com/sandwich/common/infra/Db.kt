@@ -1,7 +1,6 @@
 package com.sandwich.common.infra
 
-import com.sandwich.features.ExtraItem
-import com.sandwich.features.MenuItem
+import com.sandwich.features.CatalogItem
 import com.sandwich.features.Order
 import java.util.concurrent.ConcurrentHashMap
 
@@ -11,8 +10,8 @@ import java.util.concurrent.ConcurrentHashMap
  * Кожний слайс отримує тільки Db і робить свої запити сам.
  */
 class Db {
-    val sandwiches = ConcurrentHashMap<String, MenuItem>()
-    val extras = ConcurrentHashMap<String, ExtraItem>()
+    val sandwiches = ConcurrentHashMap<String, CatalogItem>()
+    val extras = ConcurrentHashMap<String, CatalogItem>()
     val orders = ConcurrentHashMap<String, Order>()
     val stock = ConcurrentHashMap<String, Int>()   // sandwichId → скільки можемо зробити
 }
@@ -20,19 +19,19 @@ class Db {
 fun Db.seed() {
     sandwiches.putAll(
         mapOf(
-            "classic-club"   to MenuItem("classic-club",   "Classic Club",   120),
-            "turkey-avocado" to MenuItem("turkey-avocado", "Turkey Avocado", 145),
-            "veggie-delight" to MenuItem("veggie-delight", "Veggie Delight",  99),
-            "blt"            to MenuItem("blt",            "BLT",            110),
+            "classic-club"   to CatalogItem("classic-club",   "Classic Club",   120),
+            "turkey-avocado" to CatalogItem("turkey-avocado", "Turkey Avocado", 145),
+            "veggie-delight" to CatalogItem("veggie-delight", "Veggie Delight",  99),
+            "blt"            to CatalogItem("blt",            "BLT",            110),
         )
     )
     extras.putAll(
         mapOf(
-            "extra-cheese" to ExtraItem("extra-cheese", "Сир додатковий", 25),
-            "jalapenos"    to ExtraItem("jalapenos",    "Халапеньо",       15),
-            "bacon"        to ExtraItem("bacon",        "Бекон",           35),
-            "avocado"      to ExtraItem("avocado",      "Авокадо",         30),
-            "extra-sauce"  to ExtraItem("extra-sauce",  "Соус додатковий", 10),
+            "extra-cheese" to CatalogItem("extra-cheese", "Сир додатковий", 25),
+            "jalapenos"    to CatalogItem("jalapenos",    "Халапеньо",       15),
+            "bacon"        to CatalogItem("bacon",        "Бекон",           35),
+            "avocado"      to CatalogItem("avocado",      "Авокадо",         30),
+            "extra-sauce"  to CatalogItem("extra-sauce",  "Соус додатковий", 10),
         )
     )
     stock.putAll(

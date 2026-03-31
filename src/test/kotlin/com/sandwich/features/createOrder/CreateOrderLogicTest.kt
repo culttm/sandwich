@@ -1,7 +1,6 @@
 package com.sandwich.features.createOrder
 
-import com.sandwich.features.ExtraItem
-import com.sandwich.features.MenuItem
+import com.sandwich.features.CatalogItem
 import com.sandwich.features.OrderStatus
 import java.time.Instant
 import kotlin.test.Test
@@ -12,15 +11,15 @@ import kotlin.test.assertNull
 class CreateOrderLogicTest {
 
     private val menu = mapOf(
-        "classic-club" to MenuItem("classic-club", "Classic Club", 120),
-        "blt" to MenuItem("blt", "BLT", 110),
-        "veggie-delight" to MenuItem("veggie-delight", "Veggie Delight", 99),
+        "classic-club" to CatalogItem("classic-club", "Classic Club", 120),
+        "blt" to CatalogItem("blt", "BLT", 110),
+        "veggie-delight" to CatalogItem("veggie-delight", "Veggie Delight", 99),
     )
 
     private val extras = mapOf(
-        "extra-cheese" to ExtraItem("extra-cheese", "Cheese", 25),
-        "bacon" to ExtraItem("bacon", "Bacon", 35),
-        "jalapenos" to ExtraItem("jalapenos", "Jalapenos", 15),
+        "extra-cheese" to CatalogItem("extra-cheese", "Cheese", 25),
+        "bacon" to CatalogItem("bacon", "Bacon", 35),
+        "jalapenos" to CatalogItem("jalapenos", "Jalapenos", 15),
     )
 
     private val now = Instant.parse("2026-03-26T12:00:00Z")

@@ -1,7 +1,6 @@
 package com.sandwich.features.createOrder
 
-import com.sandwich.features.ExtraItem
-import com.sandwich.features.MenuItem
+import com.sandwich.features.CatalogItem
 import java.time.Instant
 
 // ══════════════════════════════════════════════════════════════
@@ -9,8 +8,8 @@ import java.time.Instant
 // ══════════════════════════════════════════════════════════════
 
 fun GatherCreateOrderInput(
-    readMenu: () -> Map<String, MenuItem>,
-    readExtras: () -> Map<String, ExtraItem>,
+    readMenu: () -> Map<String, CatalogItem>,
+    readExtras: () -> Map<String, CatalogItem>,
     generateId: () -> String,
     now: () -> Instant
 ): (CreateOrderRequest) -> CreateOrderInput = { request ->

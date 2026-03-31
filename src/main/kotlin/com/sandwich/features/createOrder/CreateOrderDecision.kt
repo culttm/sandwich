@@ -1,7 +1,6 @@
 package com.sandwich.features.createOrder
 
-import com.sandwich.features.ExtraItem
-import com.sandwich.features.MenuItem
+import com.sandwich.features.CatalogItem
 import com.sandwich.features.Order
 import com.sandwich.features.OrderLine
 import com.sandwich.features.OrderStatus
@@ -26,8 +25,8 @@ data class CreateOrderInput(
     val orderId: String,
     val customerName: String,
     val items: List<OrderItemRequest>,
-    val menu: Map<String, MenuItem>,
-    val extras: Map<String, ExtraItem>,
+    val menu: Map<String, CatalogItem>,
+    val extras: Map<String, CatalogItem>,
     val now: Instant
 )
 

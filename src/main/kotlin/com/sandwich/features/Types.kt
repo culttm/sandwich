@@ -5,14 +5,7 @@ import kotlinx.serialization.Serializable
 // ── Catalog ──
 
 @Serializable
-data class MenuItem(
-    val id: String,
-    val name: String,
-    val price: Int
-)
-
-@Serializable
-data class ExtraItem(
+data class CatalogItem(
     val id: String,
     val name: String,
     val price: Int
@@ -20,8 +13,8 @@ data class ExtraItem(
 
 @Serializable
 data class Menu(
-    val sandwiches: List<MenuItem>,
-    val extras: List<ExtraItem>
+    val sandwiches: List<CatalogItem>,
+    val extras: List<CatalogItem>
 )
 
 // ── Order lifecycle ──
@@ -65,7 +58,7 @@ data class OrderLine(
     val sandwichId: String,
     val sandwichName: String,
     val sandwichPrice: Int,
-    val extras: List<ExtraItem>,
+    val extras: List<CatalogItem>,
     val lineTotal: Int
 )
 
