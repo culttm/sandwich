@@ -1,6 +1,6 @@
 package com.sandwich.features.orders.payOrder
 
-import com.sandwich.common.domain.*
+import com.sandwich.features.orders.*
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals

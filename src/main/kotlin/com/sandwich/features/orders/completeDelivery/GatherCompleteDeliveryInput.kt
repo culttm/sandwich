@@ -1,6 +1,6 @@
 package com.sandwich.features.orders.completeDelivery
 
-import com.sandwich.common.domain.Order
+import com.sandwich.features.orders.Order
 
 // ══════════════════════════════════════════════════════════════
 //  🔴 READ фаза: зібрати все потрібне для чистої функції

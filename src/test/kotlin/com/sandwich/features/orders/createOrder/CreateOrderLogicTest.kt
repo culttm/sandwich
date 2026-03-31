@@ -2,7 +2,7 @@ package com.sandwich.features.orders.createOrder
 
 import com.sandwich.common.domain.ExtraItem
 import com.sandwich.common.domain.MenuItem
-import com.sandwich.common.domain.OrderStatus
+import com.sandwich.features.orders.OrderStatus
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals

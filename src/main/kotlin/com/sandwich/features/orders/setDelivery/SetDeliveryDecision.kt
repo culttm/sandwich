@@ -1,6 +1,8 @@
 package com.sandwich.features.orders.setDelivery
 
-import com.sandwich.common.domain.*
+import com.sandwich.features.orders.DeliveryInfo
+import com.sandwich.features.orders.Order
+import com.sandwich.features.orders.OrderStatus
 
 // ══════════════════════════════════════════════════════════════
 //  Чистий домен: типи + pure-логіка (жодного IO, жодного suspend)

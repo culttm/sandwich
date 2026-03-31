@@ -1,7 +1,7 @@
 package com.sandwich.features.orders.cancelOrder
 
-import com.sandwich.common.domain.Order
-import com.sandwich.common.domain.OrderStatus
+import com.sandwich.features.orders.Order
+import com.sandwich.features.orders.OrderStatus
 import java.time.Duration
 import java.time.Instant
 

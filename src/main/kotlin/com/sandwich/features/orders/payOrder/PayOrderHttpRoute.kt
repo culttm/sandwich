@@ -1,6 +1,6 @@
 package com.sandwich.features.orders.payOrder
 
-import com.sandwich.common.domain.PaymentMethod
+import com.sandwich.features.orders.PaymentMethod
 import com.sandwich.common.infra.Db
 import io.ktor.http.*
 import io.ktor.server.request.*

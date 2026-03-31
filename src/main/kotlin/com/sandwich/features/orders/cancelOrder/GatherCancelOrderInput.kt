@@ -1,6 +1,6 @@
 package com.sandwich.features.orders.cancelOrder
 
-import com.sandwich.common.domain.Order
+import com.sandwich.features.orders.Order
 import java.time.Instant
 
 // ══════════════════════════════════════════════════════════════

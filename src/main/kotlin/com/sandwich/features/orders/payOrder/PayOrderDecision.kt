@@ -1,6 +1,9 @@
 package com.sandwich.features.orders.payOrder
 
-import com.sandwich.common.domain.*
+import com.sandwich.features.orders.Order
+import com.sandwich.features.orders.OrderStatus
+import com.sandwich.features.orders.PaymentInfo
+import com.sandwich.features.orders.PaymentMethod
 import java.time.Instant
 
 // ══════════════════════════════════════════════════════════════

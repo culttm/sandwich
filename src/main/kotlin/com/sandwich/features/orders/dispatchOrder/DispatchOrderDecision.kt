@@ -1,7 +1,7 @@
 package com.sandwich.features.orders.dispatchOrder
 
-import com.sandwich.common.domain.Order
-import com.sandwich.common.domain.OrderStatus
+import com.sandwich.features.orders.Order
+import com.sandwich.features.orders.OrderStatus
 
 // ══════════════════════════════════════════════════════════════
 //  Чистий домен: типи + pure-логіка (жодного IO, жодного suspend)

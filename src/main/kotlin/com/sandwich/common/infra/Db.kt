@@ -2,7 +2,7 @@ package com.sandwich.common.infra
 
 import com.sandwich.common.domain.ExtraItem
 import com.sandwich.common.domain.MenuItem
-import com.sandwich.common.domain.Order
+import com.sandwich.features.orders.Order
 import java.util.concurrent.ConcurrentHashMap
 
 /**

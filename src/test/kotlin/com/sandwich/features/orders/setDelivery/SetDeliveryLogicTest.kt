@@ -1,8 +1,7 @@
 package com.sandwich.features.orders.setDelivery
 
-import com.sandwich.common.domain.DELIVERY_BASE_FEE
-import com.sandwich.common.domain.Order
-import com.sandwich.common.domain.OrderStatus
+import com.sandwich.features.orders.Order
+import com.sandwich.features.orders.OrderStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

@@ -4,6 +4,7 @@ import com.sandwich.common.app.App
 import com.sandwich.common.app.Teardown
 import com.sandwich.common.http.HttpServer
 import com.sandwich.common.http.configureErrorHandling
+import com.sandwich.features.orders.orderErrorHandling
 import com.sandwich.common.http.configureMonitoring
 import com.sandwich.common.http.configureSerialization
 import com.sandwich.features.menu.getMenu.getMenuRoute
@@ -69,7 +70,7 @@ private fun Application.configureHealthRoutes() {
 
 private fun Application.setupApplicationEnvironment() {
     configureSerialization()
-    configureErrorHandling()
+    configureErrorHandling { orderErrorHandling() }
     configureMonitoring()
     configureHealthRoutes()
 }

@@ -1,6 +1,6 @@
 package com.sandwich.features.orders.completeDelivery
 
-import com.sandwich.common.domain.Order
+import com.sandwich.features.orders.Order
 import com.sandwich.features.orders.OrderErrorCode.*
 import com.sandwich.features.orders.orderError
 
