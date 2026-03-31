@@ -1,6 +1,8 @@
 package com.sandwich.features
 
 import io.ktor.http.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
 
 // ══════════════════════════════════════════════════════════════
 //  Shared error vocabulary для всіх order-слайсів
@@ -43,3 +45,12 @@ class OrderException(val error: OrderError) : Exception(error.message)
 
 fun orderError(code: OrderErrorCode, message: String): Nothing =
     throw OrderException(OrderError(code, message))
+
+fun StatusPagesConfig.orderErrorHandling() {
+    exception<OrderException> { call, e ->
+        call.respond(
+            e.error.code.status,
+            mapOf("code" to e.error.code.name, "message" to e.error.message)
+        )
+    }
+}
