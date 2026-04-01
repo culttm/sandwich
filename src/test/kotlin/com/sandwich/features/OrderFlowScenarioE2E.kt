@@ -8,6 +8,7 @@ import com.sandwich.common.database.collection.stock.getStock
 import com.sandwich.common.database.collection.stock.setStock
 import com.mongodb.kotlin.client.coroutine.MongoClient
 import com.mongodb.kotlin.client.coroutine.MongoDatabase
+import com.sandwich.TestDatabase
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
@@ -31,15 +32,8 @@ import kotlin.test.assertTrue
 //  MongoDB через TestContainers
 // ══════════════════════════════════════════════════════════════
 
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OrderFlowScenarioE2E : OrderFlowScenario() {
-
-    companion object {
-        @Container
-        @JvmStatic
-        val mongo = MongoDBContainer("mongo:7")
-    }
 
     private lateinit var database: MongoDatabase
     private lateinit var teardown: () -> Unit
@@ -49,7 +43,7 @@ class OrderFlowScenarioE2E : OrderFlowScenario() {
 
     @BeforeEach
     fun setUp() {
-        database = MongoClient.create(mongo.connectionString)
+        database = MongoClient.create(TestDatabase.connectionString)
             .getDatabase("sandwich-test-${System.nanoTime()}")
         runBlocking { database.seed() }
         teardown = runBlocking { SandwichHttpApi(database)() }

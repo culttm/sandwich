@@ -25,8 +25,6 @@ fun ProduceCancelOrderOutput(
                 refund = decision.refund
             )
         }
-        is CancelOrderDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
         is CancelOrderDecision.AlreadyCancelled ->
             orderError(ALREADY_CANCELLED, "Замовлення вже скасовано")
         is CancelOrderDecision.TooLate ->

@@ -13,7 +13,7 @@ import java.time.Instant
 // ── Вхід для чистої функції (зібрано на фазі READ) ──
 
 data class PayOrderInput(
-    val order: Order?,
+    val order: Order,
     val stock: Map<String, Int>,
     val method: PaymentMethod,
     val now: Instant,
@@ -24,7 +24,6 @@ data class PayOrderInput(
 
 sealed interface PayOrderDecision {
     data class Paid(val order: Order, val stockReductions: Map<String, Int>) : PayOrderDecision
-    data object NotFound : PayOrderDecision
     data class WrongStatus(val current: OrderStatus) : PayOrderDecision
     data class OutOfStock(val unavailable: List<String>) : PayOrderDecision
 }
@@ -32,36 +31,22 @@ sealed interface PayOrderDecision {
 // ── Pure logic ──
 
 fun payOrder(input: PayOrderInput): PayOrderDecision {
-    val order = input.order
+    val required = input.order.items.groupingBy { it.sandwichId }.eachCount()
+    val unavailable = required.filter { (id, qty) -> (input.stock[id] ?: 0) < qty }.keys.toList()
 
-    if (order == null)
-        return PayOrderDecision.NotFound
-
-    if (order.status != OrderStatus.AWAITING_PAYMENT)
-        return PayOrderDecision.WrongStatus(order.status)
-
-    val required = order.items
-        .groupingBy { it.sandwichId }
-        .eachCount()
-
-    val unavailable = required
-        .filter { (id, qty) -> (input.stock[id] ?: 0) < qty }
-        .keys.toList()
-
-    if (unavailable.isNotEmpty())
-        return PayOrderDecision.OutOfStock(unavailable)
-
-    val payment = PaymentInfo(
-        method = input.method,
-        paidAt = input.now.toString(),
-        transactionId = input.transactionId
-    )
-
-    return PayOrderDecision.Paid(
-        order = order.copy(
-            status = OrderStatus.PREPARING,
-            payment = payment
-        ),
-        stockReductions = required
-    )
+    return when {
+        input.order.status != OrderStatus.AWAITING_PAYMENT -> PayOrderDecision.WrongStatus(input.order.status)
+        unavailable.isNotEmpty() -> PayOrderDecision.OutOfStock(unavailable)
+        else -> PayOrderDecision.Paid(
+            order = input.order.copy(
+                status = OrderStatus.PREPARING,
+                payment = PaymentInfo(
+                    method = input.method,
+                    paidAt = input.now.toString(),
+                    transactionId = input.transactionId
+                )
+            ),
+            stockReductions = required
+        )
+    }
 }

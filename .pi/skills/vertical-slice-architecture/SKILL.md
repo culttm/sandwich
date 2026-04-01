@@ -80,15 +80,23 @@ fun Route.assignShippingRoute(
 ### Domain.kt — pure types + logic
 
 ```kotlin
-data class AssignShippingInput(val order: Order?, val address: String, val phone: String)
+// Non-nullable order — Gather handles "not found"
+data class AssignShippingInput(val order: Order, val address: String, val phone: String)
 
+// No NotFound — infrastructure concern handled in Gather
 sealed interface AssignShippingDecision {
     data class ShippingAssigned(val order: Order) : AssignShippingDecision
-    data object NotFound : AssignShippingDecision
     data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
 }
 
-fun assignShipping(input: AssignShippingInput): AssignShippingDecision { /* pure */ }
+// when expression — explicit, exhaustive
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision =
+    when {
+        input.order.status != OrderStatus.DRAFT -> AssignShippingDecision.WrongStatus(input.order.status)
+        else -> AssignShippingDecision.ShippingAssigned(
+            input.order.copy(status = OrderStatus.AWAITING_PAYMENT)
+        )
+    }
 ```
 
 ### Query slice (simple — no sandwich needed)
@@ -294,3 +302,6 @@ Before finishing any feature implementation, verify:
 6. Handler is **trivial 3-line orchestrator** — no logic inside
 7. Error decisions mapped via `domainError()` in ProduceOutput — StatusPages handles HTTP
 8. Route has **two overloads**: wiring (composition root) + HTTP protocol
+9. Input types have **non-nullable** fields — "not found" handled in GatherInput
+10. Decision sealed interfaces contain **only business outcomes** — no `NotFound`
+11. Pure functions use **`when` expressions** — not early returns

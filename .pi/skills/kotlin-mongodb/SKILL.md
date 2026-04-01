@@ -303,7 +303,7 @@ produceOutput = ProduceApplyOutput(
 → See [queries.md](references/queries.md)
 
 ### Setting up tests
-→ TestContainers for integration, direct collection access for verification
+→ TestContainers lazy singleton (`TestDatabase`), unique DB per test, direct collection access for verification
 → See [testing.md](references/testing.md)
 
 ## Anti-Patterns
@@ -397,4 +397,4 @@ Before finishing any MongoDB implementation, verify:
 5. Indexes are declared in `ensureIndexes()` — called once at startup
 6. Save operations use **optimistic locking** (version field + `findOneAndReplace`)
 7. Multi-document writes use **transactions** with `ClientSession`
-8. TestContainers used for integration tests — no embedded/mocked MongoDB
+8. TestContainers lazy singleton (`TestDatabase`) — no `@Testcontainers`/`@Container`, no embedded/mocked MongoDB

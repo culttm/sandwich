@@ -28,39 +28,56 @@ class OrderService(
 Identify the business logic that doesn't need IO. Create an Input data class and sealed Decision:
 
 ```kotlin
+// Input fields are non-nullable — Gather handles "not found"
 data class CreateOrderInput(
     val items: List<OrderItemRequest>,
     val stock: Map<ProductId, Int>,
     val prices: Map<ProductId, BigDecimal>
 )
 
+// No NotFound — infrastructure concern handled in Gather
 sealed interface CreateOrderDecision {
     data class Fulfillable(val order: Order) : CreateOrderDecision
     data class OutOfStock(val missing: List<ProductId>) : CreateOrderDecision
 }
 
-// 🟢 Pure: takes data, returns decision — NO suspend, NO repo
+// 🟢 Pure: when expression — NO suspend, NO repo
 fun createOrder(input: CreateOrderInput): CreateOrderDecision {
     val missing = input.items.filter { (input.stock[it.productId] ?: 0) < it.quantity }
-    if (missing.isNotEmpty()) return OutOfStock(missing.map { it.productId })
-    return Fulfillable(Order(input.items, calculateTotal(input)))
+    return when {
+        missing.isNotEmpty() -> OutOfStock(missing.map { it.productId })
+        else -> Fulfillable(Order(input.items, calculateTotal(input)))
+    }
 }
 ```
 
 ### Step 3: Extract GatherInput (READ phase)
 
-Move all IO reads into a factory function that returns the Input:
+Move all IO reads into a factory function that returns the Input.
+Handle "not found" here — not in the pure function:
 
 ```kotlin
 fun GatherCreateOrderInput(
-    readStock: (List<ProductId>) -> Map<ProductId, Int>,
-    readPrices: (List<ProductId>) -> Map<ProductId, BigDecimal>
-): (CreateOrderRequest) -> CreateOrderInput = { request ->
+    readStock: suspend (List<ProductId>) -> Map<ProductId, Int>,
+    readPrices: suspend (List<ProductId>) -> Map<ProductId, BigDecimal>
+): suspend (CreateOrderRequest) -> CreateOrderInput = { request ->
     val productIds = request.items.map { it.productId }
     CreateOrderInput(
         items = request.items,
         stock = readStock(productIds),
         prices = readPrices(productIds)
+    )
+}
+```
+
+For slices that load existing entities, fail fast in Gather:
+```kotlin
+fun GatherUpdateOrderInput(
+    readOrder: suspend (String) -> Order?
+): suspend (String, Request) -> UpdateOrderInput = { orderId, request ->
+    UpdateOrderInput(
+        order = readOrder(orderId) ?: domainError(NOT_FOUND, "Order not found"),
+        // ... other fields
     )
 }
 ```
@@ -118,10 +135,10 @@ fun Route.createOrderRoute(db: Db) = createOrderRoute(
 For each method in a service class:
 
 1. **List all IO calls** — find every `suspend`, repo call, HTTP call, time/random
-2. **Create Input data class** — everything the logic needs, as plain data
-3. **Create Decision sealed interface** — each branch = sealed subtype
-4. **Extract pure function** — `fun decide(input): Decision` — no IO, no suspend
-5. **Extract GatherInput** — factory that collects data into Input, deps as lambdas
+2. **Create Input data class** — everything the logic needs, as plain non-nullable data
+3. **Create Decision sealed interface** — each branch = sealed subtype (business outcomes only, no NotFound)
+4. **Extract pure function** — `fun decide(input): Decision` — no IO, no suspend, use `when` expression
+5. **Extract GatherInput** — factory that collects data into Input, deps as lambdas, handles "not found" with `?: domainError(...)`
 6. **Extract ProduceOutput** — factory that persists + maps errors, deps as lambdas
 7. **Create Handler** — trivial 3-line composition of the phases
 8. **Wire in Route** — connect real deps (db, clock, uuid) to lambda params
@@ -131,12 +148,12 @@ For each method in a service class:
 
 ### When to use sealed class for decisions
 
-Use when the pure function has **branching outcomes** that require **different actions**:
+Use when the pure function has **branching business outcomes** that require **different actions**:
 
 ```kotlin
+// Only BUSINESS decisions — no infrastructure concerns like NotFound
 sealed interface AssignShippingDecision {
     data class ShippingAssigned(val order: Order) : AssignShippingDecision
-    data object NotFound : AssignShippingDecision
     data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
     data object BlankAddress : AssignShippingDecision
 }
@@ -185,3 +202,6 @@ No interfaces, no implementations, no DI container.
 | "I log inside business logic for debugging" | Return structured Decision, log in ProduceOutput or route |
 | "I need to call an external API mid-logic" | Read API result in GatherInput, pass as field in Input |
 | "ProduceOutput has business logic" | Move it to decide(). ProduceOutput should only persist + map errors |
+| "My pure function checks if entity exists" | Handle in GatherInput with `?: domainError(NOT_FOUND, ...)`. Input fields should be non-nullable |
+| "I have `NotFound` in my Decision sealed class" | Move to GatherInput. NotFound is infrastructure, not business logic |
+| "I use early returns for validation" | Use `when` expression — explicit, exhaustive, compiler-checked |

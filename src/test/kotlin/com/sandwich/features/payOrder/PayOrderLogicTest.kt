@@ -35,7 +35,7 @@ class PayOrderLogicTest {
     )
 
     private fun input(
-        order: Order? = awaitingOrder("classic-club"),
+        order: Order = awaitingOrder("classic-club"),
         stock: Map<String, Int> = fullStock,
         method: PaymentMethod = PaymentMethod.CARD
     ) = PayOrderInput(order = order, stock = stock, method = method, now = now, transactionId = txId)
@@ -75,13 +75,6 @@ class PayOrderLogicTest {
     }
 
     // -- Error cases --
-
-    @Test
-    fun `null order returns NotFound`() {
-        val result = payOrder(input(order = null))
-
-        assertIs<PayOrderDecision.NotFound>(result)
-    }
 
     @Test
     fun `non-AWAITING_PAYMENT returns WrongStatus`() {

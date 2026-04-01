@@ -13,44 +13,51 @@ testcontainers = "1.20.4"
 
 [libraries]
 testcontainers-mongodb = { module = "org.testcontainers:mongodb", version.ref = "testcontainers" }
-testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 ```
 
 ```kotlin
 // build.gradle.kts
 testImplementation(libs.testcontainers.mongodb)
-testImplementation(libs.testcontainers.junit)
 ```
 
-### Shared Container
+**Note:** `testcontainers-junit` (`@Testcontainers`/`@Container`) is NOT needed.
+We use a lazy singleton instead — simpler, faster, no per-class container overhead.
 
-One container for all tests, each test gets an isolated database:
+### Shared Container — Lazy Singleton
+
+One container for ALL tests. Started once on first access. Each test gets an isolated database:
 
 ```kotlin
-// test/kotlin/com/example/testing/MongoTestSupport.kt
+// test/kotlin/com/example/TestDatabase.kt
 import org.testcontainers.containers.MongoDBContainer
 
-object MongoTestSupport {
-    val container: MongoDBContainer = MongoDBContainer("mongo:7").apply { start() }
+class TestDatabase {
+    companion object {
+        val db by lazy {
+            MongoDBContainer("mongo:7").also { it.start() }
+        }
 
-    val connectionString: String get() = container.connectionString
+        val connectionString: String by lazy { db.connectionString }
+    }
 }
 ```
 
+**Key:** `by lazy` means the container starts only when first test accesses it.
+No `@Testcontainers`, no `@Container`, no `companion object` with `@JvmStatic`.
+
 ### Per-Test Database Isolation
 
-Each test class (or test method) gets a unique database name:
+Each test class (or test method) creates a unique database name:
 
 ```kotlin
 import com.mongodb.kotlin.client.coroutine.MongoClient
 
-fun createTestDatabase(name: String = "test-${System.nanoTime()}"): MongoDatabase {
-    val client = MongoClient.create(MongoTestSupport.connectionString)
-    return client.getDatabase(name)
-}
+// In @BeforeEach:
+val database = MongoClient.create(TestDatabase.connectionString)
+    .getDatabase("test-${System.nanoTime()}")
 ```
 
-This ensures **zero test pollution** — no cleanup needed.
+This ensures **zero test pollution** — no cleanup needed, no `@AfterEach` drops.
 
 ## Test Structure
 
@@ -82,28 +89,21 @@ class CreateOrderLogicTest {
 Test BSON mapping + queries against real MongoDB:
 
 ```kotlin
-@Testcontainers
 class ProductCollectionTest {
-    companion object {
-        @Container @JvmStatic
-        val mongo = MongoDBContainer("mongo:7")
-    }
-
     private lateinit var collection: MongoCollection<ProductBson>
 
     @BeforeEach
     fun setUp() = runBlocking {
-        val client = MongoClient.create(mongo.connectionString)
-        val db = client.getDatabase("test-${System.nanoTime()}")
+        val db = MongoClient.create(TestDatabase.connectionString)
+            .getDatabase("test-${System.nanoTime()}")
         collection = db.getCollection<ProductBson>("products").ensureIndexes()
     }
 
     @Test
     fun `saves and retrieves product`() = runTest {
         val product = Product(id = "p-1", name = "Widget", price = Money(100), version = 0)
-        val session = MongoClient.create(mongo.connectionString).startSession()
 
-        val saved = collection.saveProduct(product, session)
+        val saved = collection.saveProduct(product)
 
         assertEquals(1, saved.version)
         val found = collection.getProductById("p-1")
@@ -112,27 +112,25 @@ class ProductCollectionTest {
 
     @Test
     fun `optimistic locking prevents concurrent modification`() = runTest {
-        val session = MongoClient.create(mongo.connectionString).startSession()
         val product = Product(id = "p-1", name = "Widget", price = Money(100), version = 0)
-        collection.saveProduct(product, session)
+        collection.saveProduct(product)
 
         val v1 = collection.getProductById("p-1")  // version = 1
 
         // Simulate concurrent write
-        collection.saveProduct(v1.copy(name = "Updated"), session)  // version → 2
+        collection.saveProduct(v1.copy(name = "Updated"))  // version → 2
 
         // Stale write should fail
         assertFailsWith<OptimisticLockException> {
-            collection.saveProduct(v1.copy(name = "Stale"), session)  // still version 1
+            collection.saveProduct(v1.copy(name = "Stale"))  // still version 1
         }
     }
 
     @Test
     fun `search filters by category`() = runTest {
-        val session = MongoClient.create(mongo.connectionString).startSession()
-        collection.saveProduct(product("p-1", category = "A"), session)
-        collection.saveProduct(product("p-2", category = "B"), session)
-        collection.saveProduct(product("p-3", category = "A"), session)
+        collection.saveProduct(product("p-1", category = "A"))
+        collection.saveProduct(product("p-2", category = "B"))
+        collection.saveProduct(product("p-3", category = "A"))
 
         val results = collection.searchProducts(categoryId = "A")
 
@@ -144,25 +142,22 @@ class ProductCollectionTest {
 
 ### E2E tests: full app with MongoDB
 
-Test the entire HTTP/gRPC flow with real MongoDB:
+Test the entire HTTP/gRPC flow with real MongoDB.
+Use abstract scenario class for test DSL — concrete implementations for E2E vs unit.
 
 ```kotlin
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OrderFlowE2ETest {
-    companion object {
-        @Container @JvmStatic
-        val mongo = MongoDBContainer("mongo:7")
-    }
-
+    private lateinit var database: MongoDatabase
     private lateinit var teardown: () -> Unit
     private lateinit var client: HttpClient
 
     @BeforeEach
-    fun setUp() = runBlocking {
-        val db = createMongoDatabase(mongo.connectionString, "e2e-${System.nanoTime()}")
-        seedTestData(db)
-        teardown = runBlocking { ServerApp(db)() }
+    fun setUp() {
+        database = MongoClient.create(TestDatabase.connectionString)
+            .getDatabase("e2e-${System.nanoTime()}")
+        runBlocking { database.seed() }
+        teardown = runBlocking { ServerApp(database)() }
         client = HttpClient { install(ContentNegotiation) { json() } }
     }
 
@@ -240,16 +235,6 @@ override suspend fun expectOrderStatus(orderId: String, expected: String) {
 
 ## Tips
 
-### Container reuse for speed
-
-```kotlin
-// In .testcontainers.properties (user home dir):
-testcontainers.reuse.enable=true
-
-// In code:
-MongoDBContainer("mongo:7").withReuse(true)
-```
-
 ### Parallel test safety
 
 Each test creates a unique database name → tests can run in parallel:
@@ -266,11 +251,42 @@ val db = client.getDatabase("test-${System.nanoTime()}")
 
 // ✅ RIGHT — each test gets fresh database
 @BeforeEach fun setUp() {
-    db = client.getDatabase("test-${System.nanoTime()}")
+    db = MongoClient.create(TestDatabase.connectionString)
+        .getDatabase("test-${System.nanoTime()}")
 }
 ```
 
 ## Anti-Patterns
+
+### ❌ `@Testcontainers` + `@Container` per class
+
+```kotlin
+// WRONG — each class gets its own container lifecycle management
+// Slow, verbose, unnecessary boilerplate
+@Testcontainers
+class SomeTest {
+    companion object {
+        @Container @JvmStatic
+        val mongo = MongoDBContainer("mongo:7")
+    }
+}
+```
+
+### ✅ Lazy singleton — one container for all tests
+
+```kotlin
+// RIGHT — TestDatabase.kt singleton, started once on first access
+class TestDatabase {
+    companion object {
+        val db by lazy { MongoDBContainer("mongo:7").also { it.start() } }
+        val connectionString: String by lazy { db.connectionString }
+    }
+}
+
+// In any test:
+val db = MongoClient.create(TestDatabase.connectionString)
+    .getDatabase("test-${System.nanoTime()}")
+```
 
 ### ❌ Mocking MongoCollection
 
@@ -302,7 +318,8 @@ companion object {
 
 ```kotlin
 @BeforeEach fun setUp() {
-    db = client.getDatabase("test-${System.nanoTime()}")
+    db = MongoClient.create(TestDatabase.connectionString)
+        .getDatabase("test-${System.nanoTime()}")
     collection = db.getCollection<ProductBson>("products")
 }
 ```

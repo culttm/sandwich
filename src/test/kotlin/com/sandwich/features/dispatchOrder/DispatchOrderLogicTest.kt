@@ -20,21 +20,14 @@ class DispatchOrderLogicTest {
         createdAt = "2026-03-26T12:00:00Z"
     )
 
-    private fun input(order: Order?) = DispatchOrderInput(order = order)
+    private fun input(order: Order = preparingOrder()) = DispatchOrderInput(order = order)
 
     @Test
     fun `PREPARING transitions to Dispatched`() {
-        val result = dispatchOrder(input(preparingOrder()))
+        val result = dispatchOrder(input())
 
         assertIs<DispatchOrderDecision.Dispatched>(result)
         assertEquals(OrderStatus.OUT_FOR_DELIVERY, result.order.status)
-    }
-
-    @Test
-    fun `null returns NotFound`() {
-        val result = dispatchOrder(input(null))
-
-        assertIs<DispatchOrderDecision.NotFound>(result)
     }
 
     @Test

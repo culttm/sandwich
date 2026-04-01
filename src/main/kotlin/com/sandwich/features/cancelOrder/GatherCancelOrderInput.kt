@@ -1,6 +1,8 @@
 package com.sandwich.features.cancelOrder
 
 import com.sandwich.features.Order
+import com.sandwich.features.OrderErrorCode.ORDER_NOT_FOUND
+import com.sandwich.features.orderError
 import java.time.Instant
 
 // ══════════════════════════════════════════════════════════════
@@ -12,7 +14,7 @@ fun GatherCancelOrderInput(
     now: () -> Instant
 ): suspend (String) -> CancelOrderInput = { orderId ->
     CancelOrderInput(
-        order = readOrder(orderId),
+        order = readOrder(orderId) ?: orderError(ORDER_NOT_FOUND, "Замовлення не знайдено"),
         now = now()
     )
 }

@@ -22,13 +22,19 @@ sealed interface CreateOrderDecision {
     data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
+// when expression — validation branches + extracted happy path
 fun createOrder(input: CreateOrderInput): CreateOrderDecision {
-    if (input.customerName.isBlank()) return CreateOrderDecision.BlankName()
-    if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder()
-
     val unknownIds = input.items.map { it.productId }.filter { it !in input.catalog }
-    if (unknownIds.isNotEmpty()) return CreateOrderDecision.UnknownProducts(unknownIds)
 
+    return when {
+        input.customerName.isBlank() -> CreateOrderDecision.BlankName()
+        input.items.isEmpty() -> CreateOrderDecision.EmptyOrder()
+        unknownIds.isNotEmpty() -> CreateOrderDecision.UnknownProducts(unknownIds)
+        else -> buildOrder(input)
+    }
+}
+
+private fun buildOrder(input: CreateOrderInput): CreateOrderDecision.Created {
     val lines = input.items.map { item ->
         val product = input.catalog.getValue(item.productId)
         val lineTotal = calculateLineTotal(product.price, item.quantity)
@@ -49,10 +55,10 @@ fun createOrder(input: CreateOrderInput): CreateOrderDecision {
 
 ```kotlin
 fun GatherCreateOrderInput(
-    readCatalog: () -> Map<String, Product>,
+    readCatalog: suspend () -> Map<String, Product>,
     generateId: () -> String,
     now: () -> Instant
-): (CreateOrderRequest) -> CreateOrderInput = { request ->
+): suspend (CreateOrderRequest) -> CreateOrderInput = { request ->
     CreateOrderInput(
         orderId = generateId(),
         customerName = request.customerName,
@@ -152,33 +158,46 @@ No mocks. No runTest. No coroutines. Just data in → decision out.
 ### Domain.kt
 
 ```kotlin
+// order is non-nullable — Gather handles "not found"
 data class CancelOrderInput(
-    val order: Order?,
+    val order: Order,
     val now: Instant
 )
 
+// No NotFound variant — that's handled in Gather
 sealed interface CancelOrderDecision {
     data class Cancelled(val order: Order, val refund: Boolean) : CancelOrderDecision
-    data object NotFound : CancelOrderDecision
     data class WrongStatus(val current: OrderStatus) : CancelOrderDecision
     data class TooLate(val message: String) : CancelOrderDecision
 }
 
-fun cancelOrder(input: CancelOrderInput): CancelOrderDecision {
-    val order = input.order ?: return CancelOrderDecision.NotFound
-    if (order.status == OrderStatus.CANCELLED) return CancelOrderDecision.WrongStatus(order.status)
-    if (order.status == OrderStatus.DELIVERED) return CancelOrderDecision.TooLate("Already delivered")
+fun cancelOrder(input: CancelOrderInput): CancelOrderDecision =
+    when {
+        input.order.status == OrderStatus.CANCELLED -> CancelOrderDecision.WrongStatus(input.order.status)
+        input.order.status == OrderStatus.DELIVERED -> CancelOrderDecision.TooLate("Already delivered")
+        else -> CancelOrderDecision.Cancelled(
+            order = input.order.copy(status = OrderStatus.CANCELLED),
+            refund = input.order.status in setOf(OrderStatus.PAID, OrderStatus.DISPATCHED)
+        )
+    }
+```
 
-    val refund = order.status in setOf(OrderStatus.PAID, OrderStatus.DISPATCHED)
+### GatherCancelOrderInput.kt
 
-    return CancelOrderDecision.Cancelled(
-        order = order.copy(status = OrderStatus.CANCELLED),
-        refund = refund
+```kotlin
+fun GatherCancelOrderInput(
+    readOrder: suspend (String) -> Order?,
+    now: () -> Instant
+): suspend (String) -> CancelOrderInput = { orderId ->
+    CancelOrderInput(
+        order = readOrder(orderId) ?: domainError(ORDER_NOT_FOUND, "Order not found"),
+        now = now()
     )
 }
 ```
 
 **Key:** time-dependent logic receives `now` as input parameter, not `Instant.now()` call.
+**Key:** "not found" handled in Gather with `?: domainError(...)`, not as a Decision variant.
 
 ---
 

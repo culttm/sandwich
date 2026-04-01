@@ -45,27 +45,22 @@ sealed interface CreateOrderDecision {
 // ── Pure logic ──
 
 fun createOrder(input: CreateOrderInput): CreateOrderDecision {
-    if (input.customerName.isBlank())
-        return CreateOrderDecision.BlankName()
-
-    if (input.items.isEmpty())
-        return CreateOrderDecision.EmptyOrder()
-
-    if (input.items.size > MAX_ITEMS_PER_ORDER)
-        return CreateOrderDecision.TooManyItems(MAX_ITEMS_PER_ORDER)
-
     val unknownSandwiches = input.items.map { it.sandwichId }.filter { it !in input.menu }
-    if (unknownSandwiches.isNotEmpty())
-        return CreateOrderDecision.UnknownSandwich(unknownSandwiches)
-
     val unknownExtras = input.items.flatMap { it.extras }.distinct().filter { it !in input.extras }
-    if (unknownExtras.isNotEmpty())
-        return CreateOrderDecision.UnknownExtras(unknownExtras)
-
     val tooManyExtras = input.items.find { it.extras.size > MAX_EXTRAS_PER_SANDWICH }
-    if (tooManyExtras != null)
-        return CreateOrderDecision.TooManyExtras(tooManyExtras.sandwichId, MAX_EXTRAS_PER_SANDWICH)
 
+    return when {
+        input.customerName.isBlank() -> CreateOrderDecision.BlankName()
+        input.items.isEmpty() -> CreateOrderDecision.EmptyOrder()
+        input.items.size > MAX_ITEMS_PER_ORDER -> CreateOrderDecision.TooManyItems(MAX_ITEMS_PER_ORDER)
+        unknownSandwiches.isNotEmpty() -> CreateOrderDecision.UnknownSandwich(unknownSandwiches)
+        unknownExtras.isNotEmpty() -> CreateOrderDecision.UnknownExtras(unknownExtras)
+        tooManyExtras != null -> CreateOrderDecision.TooManyExtras(tooManyExtras.sandwichId, MAX_EXTRAS_PER_SANDWICH)
+        else -> buildOrder(input)
+    }
+}
+
+private fun buildOrder(input: CreateOrderInput): CreateOrderDecision.Created {
     val lines = input.items.map { item ->
         val sandwich = input.menu.getValue(item.sandwichId)
         val itemExtras = item.extras.map { input.extras.getValue(it) }

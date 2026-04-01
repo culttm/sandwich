@@ -37,32 +37,34 @@ assignShipping/
 
 ```kotlin
 // ── Input (assembled by GatherInput) ──
+// Note: order is non-nullable — "not found" is handled in GatherInput
 data class AssignShippingInput(
-    val order: Order?,
+    val order: Order,
     val address: String,
     val phone: String,
     val deliveryDate: String?
 )
 
 // ── Decision (sealed — each branch = different outcome) ──
+// Note: no NotFound variant — that's an infrastructure concern, not a business decision
 sealed interface AssignShippingDecision {
     data class ShippingAssigned(val order: Order) : AssignShippingDecision
-    data object NotFound : AssignShippingDecision
     data class WrongStatus(val current: OrderStatus) : AssignShippingDecision
     data object BlankAddress : AssignShippingDecision
 }
 
-// ── Pure logic (NOT suspend) ──
-fun assignShipping(input: AssignShippingInput): AssignShippingDecision {
-    val order = input.order ?: return AssignShippingDecision.NotFound
-    if (order.status != OrderStatus.DRAFT) return AssignShippingDecision.WrongStatus(order.status)
-    if (input.address.isBlank()) return AssignShippingDecision.BlankAddress
-
-    val shippingFee = calculateShippingFee(order.subtotal)
-    return AssignShippingDecision.ShippingAssigned(
-        order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
-    )
-}
+// ── Pure logic (NOT suspend, when expression) ──
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision =
+    when {
+        input.order.status != OrderStatus.DRAFT -> AssignShippingDecision.WrongStatus(input.order.status)
+        input.address.isBlank() -> AssignShippingDecision.BlankAddress
+        else -> {
+            val shippingFee = calculateShippingFee(input.order.subtotal)
+            AssignShippingDecision.ShippingAssigned(
+                input.order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
+            )
+        }
+    }
 ```
 
 ### Handler — trivial orchestrator
@@ -83,10 +85,10 @@ fun AssignShippingHandler(
 
 ```kotlin
 fun GatherAssignShippingInput(
-    readOrder: (String) -> Order?
-): (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
+    readOrder: suspend (String) -> Order?
+): suspend (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
     AssignShippingInput(
-        order = readOrder(orderId),
+        order = readOrder(orderId) ?: domainError(ORDER_NOT_FOUND, "Order not found"),
         address = request.address,
         phone = request.phone,
         deliveryDate = request.deliveryDate
@@ -94,19 +96,20 @@ fun GatherAssignShippingInput(
 }
 ```
 
+**Key:** `NotFound` is handled here in Gather — not in the Decision function.
+The pure function receives a non-nullable `Order` and focuses only on business rules.
+
 ### ProduceOutput — WRITE phase + error mapping
 
 ```kotlin
 fun ProduceAssignShippingOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (AssignShippingDecision) -> AssignShippingResponse = { decision ->
     when (decision) {
         is AssignShippingDecision.ShippingAssigned -> {
             storeOrder(decision.order)
             AssignShippingResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is AssignShippingDecision.NotFound ->
-            domainError(ORDER_NOT_FOUND, "Order not found")
         is AssignShippingDecision.WrongStatus ->
             domainError(WRONG_STATUS, "Expected DRAFT, got: ${decision.current}")
         is AssignShippingDecision.BlankAddress ->
@@ -181,26 +184,49 @@ Every pure function in the sandwich follows this shape:
 
 ```kotlin
 // NOT suspend. Takes Input data class. Returns sealed Decision.
-fun decide(input: SomeInput): SomeDecision {
-    // all logic here — no IO, no suspend, no side effects
-    return when {
+// Prefer `when` expression — explicit, exhaustive control flow.
+fun decide(input: SomeInput): SomeDecision =
+    when {
         condition1 -> SomeDecision.OptionA(...)
         condition2 -> SomeDecision.OptionB(...)
         else -> SomeDecision.OptionC(...)
     }
-}
 
 // Input = everything the pure function needs
+// Fields are non-nullable — Gather handles "not found" before calling decide
 data class SomeInput(
-    val existingData: ExistingData?,    // from DB (nullable = might not exist)
+    val existingData: ExistingData,      // from DB (non-nullable — Gather fails fast if missing)
     val requestData: String,             // from HTTP request
     val now: Instant                     // from clock (passed in, not called)
 )
 
-// Decision = all possible outcomes
+// Decision = all possible BUSINESS outcomes
+// No NotFound — that's infrastructure, handled in Gather
 sealed interface SomeDecision {
     data class Success(val result: DomainObject) : SomeDecision
     data class ValidationError(val message: String) : SomeDecision
-    data object NotFound : SomeDecision
+}
+```
+
+### When a function has complex happy-path logic
+
+Extract the happy path into a private function:
+
+```kotlin
+fun createOrder(input: CreateOrderInput): CreateOrderDecision {
+    val unknownProducts = input.items.filter { it.id !in input.catalog }
+
+    return when {
+        input.name.isBlank() -> CreateOrderDecision.BlankName()
+        input.items.isEmpty() -> CreateOrderDecision.EmptyOrder()
+        unknownProducts.isNotEmpty() -> CreateOrderDecision.UnknownProducts(unknownProducts)
+        else -> buildOrder(input)  // complex logic extracted
+    }
+}
+
+private fun buildOrder(input: CreateOrderInput): CreateOrderDecision.Created {
+    val lines = input.items.map { /* ... */ }
+    val subtotal = lines.sumOf { it.total }
+    return CreateOrderDecision.Created(Order(items = lines, subtotal = subtotal))
 }
 ```

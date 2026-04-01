@@ -40,7 +40,7 @@ class CancelOrderLogicTest {
         createdAt = createdAt
     )
 
-    private fun input(order: Order?) = CancelOrderInput(order = order, now = now)
+    private fun input(order: Order) = CancelOrderInput(order = order, now = now)
 
     // -- Happy path: DRAFT cancel without refund --
 
@@ -80,13 +80,6 @@ class CancelOrderLogicTest {
     }
 
     // -- Error cases --
-
-    @Test
-    fun `null order returns NotFound`() {
-        val result = cancelOrder(input(null))
-
-        assertIs<CancelOrderDecision.NotFound>(result)
-    }
 
     @Test
     fun `already cancelled returns AlreadyCancelled`() {

@@ -48,13 +48,14 @@ GatherInput  →  decide  →  ProduceOutput
 ### Phase 1: GatherInput (🔴 READ)
 
 Collects everything the pure function needs. Returns a plain data object.
+**Infrastructure concerns (not found, connection errors) are handled here — not in the pure function.**
 
 ```kotlin
 fun GatherAssignShippingInput(
-    readOrder: (String) -> Order?
-): (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
+    readOrder: suspend (String) -> Order?
+): suspend (String, AssignShippingRequest) -> AssignShippingInput = { orderId, request ->
     AssignShippingInput(
-        order = readOrder(orderId),
+        order = readOrder(orderId) ?: domainError(ORDER_NOT_FOUND, "Order not found"),
         address = request.address,
         phone = request.phone,
         deliveryDate = request.deliveryDate
@@ -62,24 +63,26 @@ fun GatherAssignShippingInput(
 }
 ```
 
+**Key:** `order` is non-nullable in `AssignShippingInput`. The "not found" check lives in Gather
+because it's an infrastructure concern (data missing from DB), not a business decision.
+
 ### Phase 2: decide (🟢 PURE)
 
 Pure function. No `suspend`. Takes data, returns sealed decision.
+Use `when` expressions for explicit, exhaustive control flow.
 
 ```kotlin
-fun assignShipping(input: AssignShippingInput): AssignShippingDecision {
-    val order = input.order
-        ?: return AssignShippingDecision.NotFound
-    if (order.status != OrderStatus.DRAFT)
-        return AssignShippingDecision.WrongStatus(order.status)
-    if (input.address.isBlank())
-        return AssignShippingDecision.BlankAddress
-
-    val shippingFee = calculateShippingFee(order.subtotal)
-    return AssignShippingDecision.ShippingAssigned(
-        order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
-    )
-}
+fun assignShipping(input: AssignShippingInput): AssignShippingDecision =
+    when {
+        input.order.status != OrderStatus.DRAFT -> AssignShippingDecision.WrongStatus(input.order.status)
+        input.address.isBlank() -> AssignShippingDecision.BlankAddress
+        else -> {
+            val shippingFee = calculateShippingFee(input.order.subtotal)
+            AssignShippingDecision.ShippingAssigned(
+                input.order.copy(status = OrderStatus.AWAITING_PAYMENT, shippingFee = shippingFee)
+            )
+        }
+    }
 ```
 
 ### Phase 3: ProduceOutput (🔴 WRITE)
@@ -88,15 +91,13 @@ Persists the decision + maps errors to typed exceptions.
 
 ```kotlin
 fun ProduceAssignShippingOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (AssignShippingDecision) -> AssignShippingResponse = { decision ->
     when (decision) {
         is AssignShippingDecision.ShippingAssigned -> {
             storeOrder(decision.order)
             AssignShippingResponse(orderId = decision.order.id, total = decision.order.total)
         }
-        is AssignShippingDecision.NotFound ->
-            domainError(ORDER_NOT_FOUND, "Order not found")
         is AssignShippingDecision.WrongStatus ->
             domainError(WRONG_STATUS, "Expected DRAFT, got: ${decision.current}")
         is AssignShippingDecision.BlankAddress ->
@@ -156,7 +157,15 @@ fun domainError(code: DomainErrorCode, message: String): Nothing =
     throw DomainException(DomainError(code, message))
 ```
 
+### Where errors are thrown
+
+| Error type | Where | Why |
+|---|---|---|
+| **Not Found** (data missing from DB) | GatherInput | Infrastructure concern — pure function shouldn't know about DB absence |
+| **Business rule violation** (wrong status, blank field) | ProduceOutput (maps Decision) | Business decision made by pure function, mapped to error in WRITE phase |
+
 ProduceOutput maps error decisions to `domainError()` calls — they never return, StatusPages catches.
+GatherInput throws `domainError()` directly for infrastructure errors like "not found".
 
 ## Decision Tree
 
@@ -238,6 +247,36 @@ fun ProduceOutput(store: (Order) -> Unit): suspend (Decision) -> Response = { de
 }
 ```
 
+### ❌ NotFound as a Decision variant
+```kotlin
+// WRONG: "not found" is infrastructure (data missing), not a business decision
+sealed interface Decision {
+    data class Updated(val order: Order) : Decision
+    data object NotFound : Decision           // ← doesn't belong here
+    data class WrongStatus(val s: OrderStatus) : Decision
+}
+
+fun decide(input: Input): Decision {
+    val order = input.order ?: return Decision.NotFound  // ← null-check in pure function
+    // ...
+}
+```
+
+### ✅ NotFound handled in Gather, Input is non-nullable
+```kotlin
+// RIGHT: Gather fails fast, pure function works with clean data
+data class Input(val order: Order, /* ... */)  // non-nullable
+
+fun GatherInput(readOrder: suspend (String) -> Order?): suspend (String) -> Input = { id ->
+    Input(order = readOrder(id) ?: domainError(NOT_FOUND, "Order not found"))
+}
+
+fun decide(input: Input): Decision = when {   // no null-check needed
+    input.order.status != DRAFT -> Decision.WrongStatus(input.order.status)
+    else -> Decision.Updated(input.order.copy(/* ... */))
+}
+```
+
 ## Key Principle
 
 > **Dependency Rejection**: instead of injecting a function that fetches data, fetch the data on the edge and pass the result to a pure function.
@@ -257,3 +296,6 @@ Before finishing any implementation, verify:
 5. Pure functions testable with plain data (no mocks, no runTest)
 6. Handler is trivial 3-line composition: gather → decide → produce
 7. ProduceOutput contains NO business logic — only persistence + error mapping
+8. Input types have **non-nullable** fields — "not found" handled in GatherInput, not in Decision
+9. Decision sealed interfaces have **no `NotFound`** variant — that's an infrastructure concern
+10. Pure functions use **`when` expressions** — not early returns — for explicit, exhaustive control flow

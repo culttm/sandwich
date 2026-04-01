@@ -11,7 +11,7 @@ import com.sandwich.features.OrderStatus
 // ── Вхід для чистої функції (зібрано на фазі READ) ──
 
 data class SetDeliveryInput(
-    val order: Order?,
+    val order: Order,
     val address: String,
     val phone: String,
     val deliveryTime: String?
@@ -21,7 +21,6 @@ data class SetDeliveryInput(
 
 sealed interface SetDeliveryDecision {
     data class DeliverySet(val order: Order) : SetDeliveryDecision
-    data object NotFound : SetDeliveryDecision
     data class WrongStatus(val current: OrderStatus) : SetDeliveryDecision
     data class BlankAddress(val message: String = "Вкажіть адресу") : SetDeliveryDecision
     data class BlankPhone(val message: String = "Вкажіть телефон") : SetDeliveryDecision
@@ -30,34 +29,25 @@ sealed interface SetDeliveryDecision {
 // ── Pure logic ──
 
 fun setDelivery(input: SetDeliveryInput): SetDeliveryDecision {
-    val order = input.order
-
-    if (order == null)
-        return SetDeliveryDecision.NotFound
-
-    if (order.status != OrderStatus.DRAFT)
-        return SetDeliveryDecision.WrongStatus(order.status)
-
-    if (input.address.isBlank())
-        return SetDeliveryDecision.BlankAddress()
-
-    if (input.phone.isBlank())
-        return SetDeliveryDecision.BlankPhone()
-
-    val deliveryFee = calculateDeliveryFee(order.subtotal)
-    val delivery = DeliveryInfo(
-        address = input.address.trim(),
-        phone = input.phone.trim(),
-        deliveryTime = input.deliveryTime,
-        deliveryFee = deliveryFee
-    )
-
-    return SetDeliveryDecision.DeliverySet(
-        order.copy(
-            status = OrderStatus.AWAITING_PAYMENT,
-            delivery = delivery,
-            deliveryFee = deliveryFee,
-            total = order.subtotal - order.discount + deliveryFee
-        )
-    )
+    return when {
+        input.order.status != OrderStatus.DRAFT -> SetDeliveryDecision.WrongStatus(input.order.status)
+        input.address.isBlank() -> SetDeliveryDecision.BlankAddress()
+        input.phone.isBlank() -> SetDeliveryDecision.BlankPhone()
+        else -> {
+            val deliveryFee = calculateDeliveryFee(input.order.subtotal)
+            SetDeliveryDecision.DeliverySet(
+                input.order.copy(
+                    status = OrderStatus.AWAITING_PAYMENT,
+                    delivery = DeliveryInfo(
+                        address = input.address.trim(),
+                        phone = input.phone.trim(),
+                        deliveryTime = input.deliveryTime,
+                        deliveryFee = deliveryFee
+                    ),
+                    deliveryFee = deliveryFee,
+                    total = input.order.subtotal - input.order.discount + deliveryFee
+                )
+            )
+        }
+    }
 }

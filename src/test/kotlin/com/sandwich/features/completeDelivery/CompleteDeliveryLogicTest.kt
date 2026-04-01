@@ -20,21 +20,14 @@ class CompleteDeliveryLogicTest {
         createdAt = "2026-03-26T12:00:00Z"
     )
 
-    private fun input(order: Order?) = CompleteDeliveryInput(order = order)
+    private fun input(order: Order = outForDeliveryOrder()) = CompleteDeliveryInput(order = order)
 
     @Test
     fun `OUT_FOR_DELIVERY transitions to Delivered`() {
-        val result = completeDelivery(input(outForDeliveryOrder()))
+        val result = completeDelivery(input())
 
         assertIs<CompleteDeliveryDecision.Delivered>(result)
         assertEquals(OrderStatus.DELIVERED, result.order.status)
-    }
-
-    @Test
-    fun `null returns NotFound`() {
-        val result = completeDelivery(input(null))
-
-        assertIs<CompleteDeliveryDecision.NotFound>(result)
     }
 
     @Test

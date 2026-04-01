@@ -21,8 +21,6 @@ fun ProduceSetDeliveryOutput(
                 total = decision.order.total
             )
         }
-        is SetDeliveryDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
         is SetDeliveryDecision.WrongStatus ->
             orderError(WRONG_STATUS, "Очікується DRAFT, поточний статус: ${decision.current}")
         is SetDeliveryDecision.BlankAddress ->

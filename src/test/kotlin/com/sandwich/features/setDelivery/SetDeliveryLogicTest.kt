@@ -21,7 +21,7 @@ class SetDeliveryLogicTest {
     )
 
     private fun input(
-        order: Order? = draftOrder(),
+        order: Order = draftOrder(),
         address: String = "Khreshchatyk 1",
         phone: String = "+380991234567",
         deliveryTime: String? = null
@@ -60,13 +60,6 @@ class SetDeliveryLogicTest {
     }
 
     // -- Validation errors --
-
-    @Test
-    fun `null order returns NotFound`() {
-        val result = setDelivery(input(order = null))
-
-        assertIs<SetDeliveryDecision.NotFound>(result)
-    }
 
     @Test
     fun `non-DRAFT order returns WrongStatus`() {

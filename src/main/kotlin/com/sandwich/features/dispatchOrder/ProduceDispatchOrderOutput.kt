@@ -17,8 +17,6 @@ fun ProduceDispatchOrderOutput(
             storeOrder(decision.order)
             DispatchResponse(orderId = decision.order.id, status = "OUT_FOR_DELIVERY")
         }
-        is DispatchOrderDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
         is DispatchOrderDecision.WrongStatus ->
             orderError(WRONG_STATUS, "Очікується PREPARING, поточний статус: ${decision.current}")
     }

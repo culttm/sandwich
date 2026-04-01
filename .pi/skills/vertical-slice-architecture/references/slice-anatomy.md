@@ -104,6 +104,7 @@ data class CreateOrderInput(
     val now: Instant
 )
 
+// No NotFound — infrastructure concern, handled in Gather
 sealed interface CreateOrderDecision {
     data class Created(val order: Order) : CreateOrderDecision
     data class EmptyOrder(val message: String) : CreateOrderDecision
@@ -111,11 +112,15 @@ sealed interface CreateOrderDecision {
     data class UnknownProducts(val ids: List<String>) : CreateOrderDecision
 }
 
+// when expression — explicit control flow
 fun createOrder(input: CreateOrderInput): CreateOrderDecision {
-    if (input.customerName.isBlank()) return CreateOrderDecision.BlankName("Name required")
-    if (input.items.isEmpty()) return CreateOrderDecision.EmptyOrder("Order must have items")
-    // ... pure logic ...
-    return CreateOrderDecision.Created(order)
+    val unknownIds = input.items.map { it.productId }.filter { it !in input.catalog }
+    return when {
+        input.customerName.isBlank() -> CreateOrderDecision.BlankName("Name required")
+        input.items.isEmpty() -> CreateOrderDecision.EmptyOrder("Order must have items")
+        unknownIds.isNotEmpty() -> CreateOrderDecision.UnknownProducts(unknownIds)
+        else -> buildOrder(input)
+    }
 }
 ```
 
@@ -137,10 +142,10 @@ fun CreateOrderHandler(
 
 ```kotlin
 fun GatherCreateOrderInput(
-    readCatalog: () -> Map<String, Product>,
+    readCatalog: suspend () -> Map<String, Product>,
     generateId: () -> String,
     now: () -> Instant
-): (CreateOrderRequest) -> CreateOrderInput = { request ->
+): suspend (CreateOrderRequest) -> CreateOrderInput = { request ->
     CreateOrderInput(
         orderId = generateId(),
         customerName = request.customerName,
@@ -151,11 +156,24 @@ fun GatherCreateOrderInput(
 }
 ```
 
+For slices that load an existing entity:
+```kotlin
+fun GatherAssignShippingInput(
+    readOrder: suspend (String) -> Order?
+): suspend (String, Request) -> AssignShippingInput = { orderId, request ->
+    AssignShippingInput(
+        // NotFound handled HERE — pure function gets non-nullable Order
+        order = readOrder(orderId) ?: domainError(ORDER_NOT_FOUND, "Order not found"),
+        address = request.address
+    )
+}
+```
+
 ### ProduceOutput (WRITE phase + error mapping)
 
 ```kotlin
 fun ProduceCreateOrderOutput(
-    storeOrder: (Order) -> Unit
+    storeOrder: suspend (Order) -> Unit
 ): suspend (CreateOrderDecision) -> CreateOrderResponse = { decision ->
     when (decision) {
         is CreateOrderDecision.Created -> {
@@ -211,3 +229,6 @@ fun `valid order calculates discount for 3+ items`() {
     assertTrue(decision.order.discount > 0)
 }
 ```
+
+**Note:** No `null order returns NotFound` tests — those are replaced by
+Gather-level testing (E2E). Pure function tests focus on **business decisions** only.

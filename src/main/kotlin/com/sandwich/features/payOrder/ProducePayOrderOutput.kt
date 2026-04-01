@@ -23,8 +23,6 @@ fun ProducePayOrderOutput(
                 paymentMethod = decision.order.payment!!.method
             )
         }
-        is PayOrderDecision.NotFound ->
-            orderError(ORDER_NOT_FOUND, "Замовлення не знайдено")
         is PayOrderDecision.WrongStatus ->
             orderError(WRONG_STATUS, "Очікується AWAITING_PAYMENT, поточний статус: ${decision.current}")
         is PayOrderDecision.OutOfStock ->
